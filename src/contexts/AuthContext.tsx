@@ -19,9 +19,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error('Error checking auth session:', error);
+      }
       setSession(session);
       setUser(session?.user ?? null);
+    }).catch((err) => {
+      console.error('Unexpected error checking auth session:', err);
+    }).finally(() => {
       setLoading(false);
     });
 
