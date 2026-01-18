@@ -1,81 +1,84 @@
 import { useState } from 'react';
-import { Stethoscope, Activity, Heart, Thermometer } from 'lucide-react';
+import { Stethoscope, Activity, Thermometer, Search, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useAudio } from '../../contexts/AudioContext';
 
 interface Patient {
   id: string;
-  complaint: string;
+  name: string;
   age: number;
   gender: string;
-}
-
-interface ExamAction {
-  id: string;
-  name: string;
-  icon: string;
-  category: 'vitals' | 'physical' | 'history';
+  complaint: string;
+  avatar: string;
+  vitals: {
+    hr: number;
+    bp: string;
+    temp: number;
+    o2: number;
+  };
 }
 
 interface Clue {
   id: string;
+  location: 'head' | 'chest' | 'abdomen' | 'limbs';
+  tool: 'stethoscope' | 'thermometer' | 'flashlight' | 'hands';
   text: string;
-  relevance: number;
+  isAbnormal: boolean;
 }
 
 interface Diagnosis {
   id: string;
   name: string;
-  correctFor: string;
+  description: string;
+  requiredClues: string[];
 }
 
-const PATIENTS: Patient[] = [
-  { id: 'p1', complaint: 'Severe chest pain and shortness of breath', age: 58, gender: 'Male' },
-  { id: 'p2', complaint: 'High fever and persistent cough for 3 days', age: 34, gender: 'Female' },
-  { id: 'p3', complaint: 'Severe headache and sensitivity to light', age: 28, gender: 'Female' },
-];
-
-const EXAM_ACTIONS: ExamAction[] = [
-  { id: 'vitals', name: 'Check Vitals', icon: '🩺', category: 'vitals' },
-  { id: 'heart', name: 'Listen to Heart', icon: '❤️', category: 'physical' },
-  { id: 'lungs', name: 'Listen to Lungs', icon: '🫁', category: 'physical' },
-  { id: 'temperature', name: 'Check Temperature', icon: '🌡️', category: 'vitals' },
-  { id: 'history', name: 'Medical History', icon: '📋', category: 'history' },
-  { id: 'physical', name: 'Physical Exam', icon: '🔍', category: 'physical' },
-];
-
-const CLUES: Record<string, Record<string, Clue>> = {
-  p1: {
-    vitals: { id: 'c1', text: 'BP: 160/95 (elevated), Pulse: 110 (rapid)', relevance: 3 },
-    heart: { id: 'c2', text: 'Irregular heartbeat detected', relevance: 3 },
-    lungs: { id: 'c3', text: 'Clear breath sounds, no congestion', relevance: 1 },
-    temperature: { id: 'c4', text: 'Temperature: 98.6°F (normal)', relevance: 1 },
-    history: { id: 'c5', text: 'History of high blood pressure, smoker', relevance: 3 },
-    physical: { id: 'c6', text: 'Sweating, pale skin, pain radiating to left arm', relevance: 3 },
+const PATIENTS: { patient: Patient; clues: Clue[]; diagnoses: Diagnosis[] }[] = [
+  {
+    patient: {
+      id: 'p1',
+      name: 'Robert Chen',
+      age: 58,
+      gender: 'Male',
+      complaint: 'Severe chest pain radiating to arm',
+      avatar: '👨🏻',
+      vitals: { hr: 110, bp: '160/95', temp: 98.6, o2: 96 },
+    },
+    clues: [
+      { id: 'c1', location: 'chest', tool: 'stethoscope', text: 'Irregular heart rhythm detected', isAbnormal: true },
+      { id: 'c2', location: 'chest', tool: 'hands', text: 'Patient winces in pain when chest is pressed', isAbnormal: true },
+      { id: 'c3', location: 'head', tool: 'flashlight', text: 'Pupils equal and reactive', isAbnormal: false },
+      { id: 'c4', location: 'limbs', tool: 'hands', text: 'Left arm numbness reported', isAbnormal: true },
+      { id: 'c5', location: 'head', tool: 'thermometer', text: 'Temperature normal (98.6°F)', isAbnormal: false },
+    ],
+    diagnoses: [
+      { id: 'd1', name: 'Myocardial Infarction', description: 'Heart Attack', requiredClues: ['c1', 'c2', 'c4'] },
+      { id: 'd2', name: 'Panic Attack', description: 'Severe anxiety episode', requiredClues: [] },
+      { id: 'd3', name: 'Acid Reflux', description: 'Severe heartburn', requiredClues: [] },
+    ],
   },
-  p2: {
-    vitals: { id: 'c7', text: 'BP: 120/80 (normal), Pulse: 95 (slightly elevated)', relevance: 2 },
-    heart: { id: 'c8', text: 'Regular heartbeat, no abnormalities', relevance: 1 },
-    lungs: { id: 'c9', text: 'Crackling sounds in lower lobes, congestion present', relevance: 3 },
-    temperature: { id: 'c10', text: 'Temperature: 102.8°F (high fever)', relevance: 3 },
-    history: { id: 'c11', text: 'No chronic conditions, recent travel abroad', relevance: 2 },
-    physical: { id: 'c12', text: 'Productive cough with yellow-green mucus, fatigue', relevance: 3 },
+  {
+    patient: {
+      id: 'p2',
+      name: 'Sarah Miller',
+      age: 34,
+      gender: 'Female',
+      complaint: 'High fever and productive cough',
+      avatar: '👩🏼',
+      vitals: { hr: 95, bp: '120/80', temp: 102.8, o2: 92 },
+    },
+    clues: [
+      { id: 'c6', location: 'chest', tool: 'stethoscope', text: 'Crackles heard in lower right lung', isAbnormal: true },
+      { id: 'c7', location: 'head', tool: 'thermometer', text: 'High fever detected (102.8°F)', isAbnormal: true },
+      { id: 'c8', location: 'head', tool: 'flashlight', text: 'Throat appears red and inflamed', isAbnormal: true },
+      { id: 'c9', location: 'abdomen', tool: 'hands', text: 'Soft, non-tender', isAbnormal: false },
+    ],
+    diagnoses: [
+      { id: 'd4', name: 'Pneumonia', description: 'Lung infection', requiredClues: ['c6', 'c7'] },
+      { id: 'd5', name: 'Bronchitis', description: 'Inflammation of bronchial tubes', requiredClues: [] },
+      { id: 'd6', name: 'Influenza', description: 'Viral flu', requiredClues: [] },
+    ],
   },
-  p3: {
-    vitals: { id: 'c13', text: 'BP: 115/75 (normal), Pulse: 88 (normal)', relevance: 1 },
-    heart: { id: 'c14', text: 'Regular heartbeat', relevance: 1 },
-    lungs: { id: 'c15', text: 'Clear breath sounds', relevance: 1 },
-    temperature: { id: 'c16', text: 'Temperature: 99.1°F (slightly elevated)', relevance: 2 },
-    history: { id: 'c17', text: 'History of migraines, recent stress', relevance: 2 },
-    physical: { id: 'c18', text: 'Stiff neck, photophobia, nausea and vomiting', relevance: 3 },
-  },
-};
-
-const DIAGNOSES: Diagnosis[] = [
-  { id: 'd1', name: 'Acute Myocardial Infarction (Heart Attack)', correctFor: 'p1' },
-  { id: 'd2', name: 'Bacterial Pneumonia', correctFor: 'p2' },
-  { id: 'd3', name: 'Meningitis', correctFor: 'p3' },
-  { id: 'd4', name: 'Common Cold', correctFor: 'none' },
-  { id: 'd5', name: 'Anxiety Attack', correctFor: 'none' },
-  { id: 'd6', name: 'Asthma Exacerbation', correctFor: 'none' },
 ];
 
 interface SymptomDetectiveChallengeProps {
@@ -83,190 +86,272 @@ interface SymptomDetectiveChallengeProps {
 }
 
 export function SymptomDetectiveChallenge({ onComplete }: SymptomDetectiveChallengeProps) {
-  const [currentPatientIndex, setCurrentPatientIndex] = useState(0);
-  const [discoveredClues, setDiscoveredClues] = useState<Clue[]>([]);
-  const [usedActions, setUsedActions] = useState<string[]>([]);
-  const [confidence, setConfidence] = useState(0);
+  const [currentCaseIndex, setCurrentCaseIndex] = useState(0);
+  const [selectedTool, setSelectedTool] = useState<'stethoscope' | 'thermometer' | 'flashlight' | 'hands' | null>(null);
+  const [discoveredClues, setDiscoveredClues] = useState<string[]>([]);
   const [showDiagnosis, setShowDiagnosis] = useState(false);
-  const [totalScore, setTotalScore] = useState(0);
-  const [patientScores, setPatientScores] = useState<number[]>([]);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [score, setScore] = useState(0);
+  const { playSfx } = useAudio();
 
-  const currentPatient = PATIENTS[currentPatientIndex];
+  const currentCase = PATIENTS[currentCaseIndex];
 
-  const handleExamAction = (action: ExamAction) => {
-    if (usedActions.includes(action.id)) return;
+  const handleBodyPartClick = (location: 'head' | 'chest' | 'abdomen' | 'limbs') => {
+    if (!selectedTool) {
+      setFeedback({ type: 'info', message: 'Select a tool first!' });
+      return;
+    }
 
-    const clue = CLUES[currentPatient.id][action.id];
+    playSfx('click');
+
+    const clue = currentCase.clues.find(c => c.location === location && c.tool === selectedTool);
+
     if (clue) {
-      setDiscoveredClues([...discoveredClues, clue]);
-      setUsedActions([...usedActions, action.id]);
-      setConfidence(Math.min(100, confidence + clue.relevance * 10));
+      if (!discoveredClues.includes(clue.id)) {
+        setDiscoveredClues([...discoveredClues, clue.id]);
+        setFeedback({
+          type: clue.isAbnormal ? 'error' : 'success',
+          message: `${clue.isAbnormal ? 'ABNORMAL' : 'NORMAL'}: ${clue.text}`
+        });
+      } else {
+        setFeedback({ type: 'info', message: 'Already examined this area with this tool.' });
+      }
+
+
+    } else {
+      setFeedback({ type: 'info', message: 'Nothing significant found here with this tool.' });
     }
   };
 
-  const handleDiagnosis = (diagnosis: Diagnosis) => {
-    const isCorrect = diagnosis.correctFor === currentPatient.id;
-    const efficiency = Math.max(0, 100 - (usedActions.length * 10)); // Fewer tests = better
-    const speedBonus = Math.max(0, 20 - usedActions.length * 2);
-    
-    const patientScore = isCorrect 
-      ? Math.min(100, 50 + (efficiency * 0.3) + speedBonus)
-      : 20; // Partial credit for trying
+  const handleDiagnose = (diagnosisId: string) => {
+    // const diagnosis = currentCase.diagnoses.find(d => d.id === diagnosisId); // Unused
+    const correctDiagnosis = currentCase.diagnoses[0]; // First one is always correct in this data structure
 
-    setPatientScores([...patientScores, Math.round(patientScore)]);
-    setTotalScore(totalScore + Math.round(patientScore));
+    if (diagnosisId === correctDiagnosis.id) {
+      // Check if enough clues were found
+      const foundRequired = correctDiagnosis.requiredClues.every(id => discoveredClues.includes(id));
 
-    // Move to next patient or complete
-    if (currentPatientIndex < PATIENTS.length - 1) {
-      setTimeout(() => {
-        setCurrentPatientIndex(currentPatientIndex + 1);
-        setDiscoveredClues([]);
-        setUsedActions([]);
-        setConfidence(0);
-        setShowDiagnosis(false);
-      }, 2000);
+      if (foundRequired) {
+        playSfx('success');
+        const caseScore = 100 - (discoveredClues.length - correctDiagnosis.requiredClues.length) * 5; // Penalty for unnecessary tests
+        setScore(prev => prev + Math.max(50, caseScore));
+
+        if (currentCaseIndex < PATIENTS.length - 1) {
+          setTimeout(() => {
+            setCurrentCaseIndex(prev => prev + 1);
+            setDiscoveredClues([]);
+            setSelectedTool(null);
+            setShowDiagnosis(false);
+            setFeedback(null);
+          }, 2000);
+        } else {
+          setTimeout(() => onComplete(Math.round((score + caseScore) / PATIENTS.length)), 2000);
+        }
+      } else {
+        setFeedback({ type: 'error', message: 'Correct diagnosis, but you need more evidence!' });
+      }
     } else {
-      setTimeout(() => {
-        const finalScore = Math.round((totalScore + Math.round(patientScore)) / PATIENTS.length);
-        onComplete(finalScore);
-      }, 2000);
+      playSfx('error');
+      setFeedback({ type: 'error', message: 'Incorrect diagnosis. Review the evidence.' });
+      setScore(prev => Math.max(0, prev - 10));
     }
   };
 
   return (
     <div className="max-w-7xl mx-auto p-6">
       <div className="bg-white rounded-2xl shadow-lg p-8">
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <Stethoscope className="w-8 h-8 text-red-600" />
+            <Activity className="w-8 h-8 text-red-600" />
             <div>
-              <h3 className="text-2xl font-bold text-gray-900">
-                Symptom Detective
-              </h3>
-              <div className="text-sm text-gray-600">
-                Patient {currentPatientIndex + 1} of {PATIENTS.length}
-              </div>
+              <h3 className="text-2xl font-bold text-gray-900">Symptom Detective</h3>
+              <p className="text-gray-600">Case {currentCaseIndex + 1}: {currentCase.patient.name}</p>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-sm text-gray-600">Confidence Level</div>
-            <div className="text-2xl font-bold text-red-600">{confidence}%</div>
-          </div>
-        </div>
-
-        {/* Patient Info */}
-        <div className="bg-gradient-to-r from-red-50 to-pink-50 rounded-xl p-6 mb-6">
-          <div className="flex items-start gap-4">
-            <div className="text-6xl">👤</div>
-            <div className="flex-1">
-              <div className="flex items-center gap-4 mb-2">
-                <div className="font-bold text-gray-900">
-                  {currentPatient.gender}, Age {currentPatient.age}
+          <div className="flex items-center gap-4">
+            <div className="bg-black rounded-lg p-3 flex items-center gap-4 min-w-[300px]">
+              <div className="text-green-500 animate-pulse">
+                <Activity className="w-6 h-6" />
+              </div>
+              <div className="grid grid-cols-4 gap-4 text-xs font-mono text-green-500">
+                <div>
+                  <div className="text-gray-500">HR</div>
+                  <div className="text-lg">{currentCase.patient.vitals.hr}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">BP</div>
+                  <div className="text-lg">{currentCase.patient.vitals.bp}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">TEMP</div>
+                  <div className="text-lg">{currentCase.patient.vitals.temp}°</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">O2</div>
+                  <div className="text-lg">{currentCase.patient.vitals.o2}%</div>
                 </div>
               </div>
-              <div className="text-lg text-gray-800 mb-3">
-                <span className="font-semibold">Chief Complaint:</span> {currentPatient.complaint}
-              </div>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-6 mb-6">
-          {/* Examination Actions */}
-          <div className="col-span-1">
-            <h4 className="font-bold text-gray-900 mb-3">Examination Actions:</h4>
-            <div className="space-y-2">
-              {EXAM_ACTIONS.map(action => (
-                <button
-                  key={action.id}
-                  onClick={() => handleExamAction(action)}
-                  disabled={usedActions.includes(action.id)}
-                  className={`w-full p-3 rounded-lg border-2 text-left transition-all ${
-                    usedActions.includes(action.id)
-                      ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'border-red-200 bg-white hover:border-red-400 hover:bg-red-50'
+        <div className="grid grid-cols-12 gap-6">
+          {/* Tools Palette */}
+          <div className="col-span-2 space-y-3">
+            <h4 className="font-bold text-gray-900 mb-2">Medical Tools</h4>
+            {[
+              { id: 'stethoscope', icon: <Stethoscope />, label: 'Listen' },
+              { id: 'thermometer', icon: <Thermometer />, label: 'Temp' },
+              { id: 'flashlight', icon: <Search />, label: 'Examine' },
+              { id: 'hands', icon: <Activity />, label: 'Palpate' },
+            ].map(tool => (
+              <button
+                key={tool.id}
+                onClick={() => setSelectedTool(tool.id as any)}
+                className={`w-full p-4 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${selectedTool === tool.id
+                  ? 'border-red-500 bg-red-50 text-red-700'
+                  : 'border-gray-200 hover:border-red-300 hover:bg-gray-50'
                   }`}
+              >
+                {tool.icon}
+                <span className="text-xs font-semibold">{tool.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Body Map */}
+          <div className="col-span-6 relative bg-gray-50 rounded-2xl border-2 border-gray-200 p-8 flex items-center justify-center">
+            <div className="relative h-[500px] w-[300px]">
+              {/* Simple Body SVG Representation */}
+              <svg viewBox="0 0 200 500" className="w-full h-full drop-shadow-xl">
+                {/* Head */}
+                <g
+                  onClick={() => handleBodyPartClick('head')}
+                  className="cursor-pointer hover:opacity-80 transition-opacity"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{action.icon}</span>
-                    <span className="font-semibold">{action.name}</span>
-                  </div>
+                  <circle cx="100" cy="50" r="40" fill="#FFD1DC" />
+                  <text x="100" y="55" textAnchor="middle" fontSize="30">{currentCase.patient.avatar}</text>
+                </g>
+
+                {/* Chest */}
+                <g
+                  onClick={() => handleBodyPartClick('chest')}
+                  className="cursor-pointer hover:opacity-80 transition-opacity"
+                >
+                  <rect x="60" y="95" width="80" height="100" rx="10" fill="#87CEEB" />
+                </g>
+
+                {/* Abdomen */}
+                <g
+                  onClick={() => handleBodyPartClick('abdomen')}
+                  className="cursor-pointer hover:opacity-80 transition-opacity"
+                >
+                  <rect x="60" y="200" width="80" height="90" rx="10" fill="#98FB98" />
+                </g>
+
+                {/* Limbs (Arms/Legs simplified) */}
+                <g
+                  onClick={() => handleBodyPartClick('limbs')}
+                  className="cursor-pointer hover:opacity-80 transition-opacity"
+                >
+                  <rect x="20" y="100" width="35" height="150" rx="10" fill="#FFD1DC" /> {/* Left Arm */}
+                  <rect x="145" y="100" width="35" height="150" rx="10" fill="#FFD1DC" /> {/* Right Arm */}
+                  <rect x="60" y="300" width="35" height="180" rx="10" fill="#87CEEB" /> {/* Left Leg */}
+                  <rect x="105" y="300" width="35" height="180" rx="10" fill="#87CEEB" /> {/* Right Leg */}
+                </g>
+              </svg>
+
+              {/* Tool Cursor Follower (Visual only, simplified) */}
+              {selectedTool && (
+                <div className="absolute top-4 right-4 bg-white/90 p-2 rounded-lg shadow text-xs font-bold text-red-600 border border-red-200">
+                  Using: {selectedTool.toUpperCase()}
+                </div>
+              )}
+            </div>
+
+            {/* Feedback Overlay */}
+            <AnimatePresence>
+              {feedback && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className={`absolute bottom-8 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg font-bold flex items-center gap-2 ${feedback.type === 'success' ? 'bg-green-100 text-green-800' :
+                    feedback.type === 'error' ? 'bg-red-100 text-red-800' :
+                      'bg-blue-100 text-blue-800'
+                    }`}
+                >
+                  {feedback.type === 'success' && <CheckCircle2 className="w-5 h-5" />}
+                  {feedback.type === 'error' && <AlertCircle className="w-5 h-5" />}
+                  {feedback.message}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Findings & Diagnosis */}
+          <div className="col-span-4 flex flex-col h-full">
+            <div className="bg-gray-50 rounded-xl p-4 mb-4 flex-1 overflow-y-auto">
+              <h4 className="font-bold text-gray-900 mb-3">Clinical Findings</h4>
+              {discoveredClues.length === 0 ? (
+                <div className="text-gray-500 text-sm text-center py-8">
+                  Select a tool and click body parts to examine patient.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {discoveredClues.map(id => {
+                    const clue = currentCase.clues.find(c => c.id === id);
+                    if (!clue) return null;
+                    return (
+                      <div key={id} className={`p-3 rounded-lg border text-sm ${clue.isAbnormal ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'
+                        }`}>
+                        <div className="font-bold mb-1 capitalize">{clue.location} - {clue.tool}</div>
+                        <div className="text-gray-700">{clue.text}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowDiagnosis(true)}
+              disabled={discoveredClues.length < 3}
+              className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+            >
+              Make Diagnosis
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Diagnosis Modal */}
+      {showDiagnosis && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full shadow-2xl">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Select Diagnosis</h3>
+            <div className="grid grid-cols-1 gap-4 mb-6">
+              {currentCase.diagnoses.map(diagnosis => (
+                <button
+                  key={diagnosis.id}
+                  onClick={() => handleDiagnose(diagnosis.id)}
+                  className="p-4 rounded-xl border-2 border-gray-200 hover:border-red-500 hover:bg-red-50 text-left transition-all group"
+                >
+                  <div className="font-bold text-gray-900 group-hover:text-red-700">{diagnosis.name}</div>
+                  <div className="text-gray-600 text-sm">{diagnosis.description}</div>
                 </button>
               ))}
             </div>
-          </div>
-
-          {/* Discovered Clues */}
-          <div className="col-span-2">
-            <h4 className="font-bold text-gray-900 mb-3">Clinical Findings:</h4>
-            
-            {discoveredClues.length === 0 ? (
-              <div className="bg-gray-50 rounded-xl p-8 text-center text-gray-500">
-                <Activity className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p>Select examination actions to gather clinical data</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {discoveredClues.map((clue, index) => (
-                  <div
-                    key={index}
-                    className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 animate-fade-in"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`w-2 h-2 rounded-full mt-2 ${
-                        clue.relevance === 3 ? 'bg-red-500' : clue.relevance === 2 ? 'bg-yellow-500' : 'bg-gray-400'
-                      }`} />
-                      <p className="text-gray-800">{clue.text}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {discoveredClues.length >= 3 && !showDiagnosis && (
-              <button
-                onClick={() => setShowDiagnosis(true)}
-                className="w-full mt-4 py-3 bg-gradient-to-r from-red-600 to-pink-600 text-white font-bold rounded-xl hover:from-red-700 hover:to-pink-700 transition-all"
-              >
-                Make Diagnosis
-              </button>
-            )}
-
-            {showDiagnosis && (
-              <div className="mt-6">
-                <h4 className="font-bold text-gray-900 mb-3">Select Diagnosis:</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  {DIAGNOSES.map(diagnosis => (
-                    <button
-                      key={diagnosis.id}
-                      onClick={() => handleDiagnosis(diagnosis)}
-                      className="p-4 border-2 border-gray-200 rounded-xl text-left hover:border-red-400 hover:bg-red-50 transition-all"
-                    >
-                      <div className="font-semibold text-gray-900">{diagnosis.name}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            <button
+              onClick={() => setShowDiagnosis(false)}
+              className="text-gray-500 hover:text-gray-700 font-medium"
+            >
+              Cancel
+            </button>
           </div>
         </div>
-
-        {/* Progress */}
-        <div className="flex gap-2 justify-center">
-          {PATIENTS.map((_, index) => (
-            <div
-              key={index}
-              className={`w-3 h-3 rounded-full ${
-                index < currentPatientIndex
-                  ? 'bg-green-500'
-                  : index === currentPatientIndex
-                  ? 'bg-red-500'
-                  : 'bg-gray-300'
-              }`}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
+      )}
+    </div >
   );
 }

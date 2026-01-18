@@ -1,9 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AudioProvider } from './contexts/AudioContext';
 import { HomePage } from './pages/HomePage';
 import { CareerWorld } from './pages/CareerWorld';
 import { LandingPage } from './pages/LandingPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { LeaderboardPage } from './pages/LeaderboardPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -69,7 +71,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <AudioProvider>
+          <AppRoutes />
+        </AudioProvider>
       </AuthProvider>
     </BrowserRouter>
   );

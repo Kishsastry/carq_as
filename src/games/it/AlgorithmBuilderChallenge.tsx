@@ -1,11 +1,17 @@
 import { useState } from 'react';
-import { Code2, Play, CheckCircle2 } from 'lucide-react';
+import { Code2, Play, CheckCircle2, GripVertical, Trash2, Cpu, ArrowRight } from 'lucide-react';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useAudio } from '../../contexts/AudioContext';
 
 interface CodeBlock {
   id: string;
   type: 'loop' | 'condition' | 'function' | 'variable' | 'return';
   label: string;
   icon: string;
+  uid?: string; // Unique ID for drag and drop
 }
 
 interface Problem {
@@ -27,22 +33,9 @@ const CODE_BLOCKS: CodeBlock[] = [
   { id: 'add-to-list', type: 'function', label: 'Add to list', icon: '➕' },
   { id: 'sort-list', type: 'function', label: 'Sort list', icon: '📊' },
   { id: 'swap-values', type: 'function', label: 'Swap values', icon: '🔀' },
-  { id: 'set-variable', type: 'variable', label: 'Set variable', icon: '=' },
-  { id: 'return-value', type: 'return', label: 'Return result', icon: '↩️' },
 ];
 
 const PROBLEMS: Problem[] = [
-  {
-    title: 'Sort Customer Orders',
-    description: 'Sort a list of customer order values from lowest to highest priority.',
-    input: '[45, 12, 67, 23, 89]',
-    expectedOutput: '[12, 23, 45, 67, 89]',
-    solution: ['for-loop', 'sort-list', 'return-value'],
-    testCases: [
-      { input: '[5, 2, 8]', output: '[2, 5, 8]' },
-      { input: '[100, 50, 75]', output: '[50, 75, 100]' },
-    ],
-  },
   {
     title: 'Filter High Priority',
     description: 'Find all items with a value greater than 50.',
@@ -71,34 +64,133 @@ interface AlgorithmBuilderChallengeProps {
   onComplete: (score: number) => void;
 }
 
+function SortableBlock({ block, onRemove, isActive }: { block: CodeBlock; onRemove: () => void; isActive: boolean }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: block.uid! });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    marginLeft: block.type === 'condition' ? 0 : 20,
+    zIndex: isDragging ? 10 : 1,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-3 rounded-lg p-3 transition-all group ${isActive
+        ? 'bg-yellow-500/20 border-2 border-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.3)]'
+        : 'bg-gray-700 hover:bg-gray-600 border-2 border-transparent'
+        } ${isDragging ? 'shadow-xl ring-2 ring-green-500' : ''}`}
+    >
+      <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-white">
+        <GripVertical size={20} />
+      </div>
+      <span className="text-2xl">{block.icon}</span>
+      <span className={`font-mono text-sm flex-1 ${isActive ? 'text-yellow-300 font-bold' : 'text-white'}`}>
+        {block.label}
+      </span>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
+        className="text-gray-400 hover:text-red-400 transition-colors p-1"
+      >
+        <Trash2 size={18} />
+      </button>
+    </div>
+  );
+}
+
 export function AlgorithmBuilderChallenge({ onComplete }: AlgorithmBuilderChallengeProps) {
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
   const [selectedBlocks, setSelectedBlocks] = useState<CodeBlock[]>([]);
   const [testResults, setTestResults] = useState<boolean[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [problemScores, setProblemScores] = useState<number[]>([]);
+  const [executingBlockIndex, setExecutingBlockIndex] = useState<number | null>(null);
+  const [variables, setVariables] = useState<Record<string, any>>({});
+  const { playSfx } = useAudio();
 
   const currentProblem = PROBLEMS[currentProblemIndex];
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   const handleBlockClick = (block: CodeBlock) => {
     if (selectedBlocks.length < 10) {
-      setSelectedBlocks([...selectedBlocks, block]);
+      playSfx('click');
+      const newBlock = { ...block, uid: Math.random().toString(36).substr(2, 9) };
+      setSelectedBlocks([...selectedBlocks, newBlock]);
     }
   };
 
-  const handleRemoveBlock = (index: number) => {
-    setSelectedBlocks(selectedBlocks.filter((_, i) => i !== index));
+  const handleRemoveBlock = (uid: string) => {
+    playSfx('click');
+    setSelectedBlocks(selectedBlocks.filter(b => b.uid !== uid));
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      playSfx('click');
+      setSelectedBlocks((items) => {
+        const oldIndex = items.findIndex((item) => item.uid === active.id);
+        const newIndex = items.findIndex((item) => item.uid === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
+
+  const simulateExecution = async () => {
+    setVariables({});
+
+    // Animate execution step by step
+    for (let i = 0; i < selectedBlocks.length; i++) {
+      setExecutingBlockIndex(i);
+      playSfx('click'); // Mechanical click sound for each step
+
+      // Update fake variables for visualization
+      const block = selectedBlocks[i];
+      if (block.type === 'variable') {
+        setVariables(prev => ({ ...prev, 'maxValue': Math.floor(Math.random() * 100) }));
+      } else if (block.type === 'loop') {
+        setVariables(prev => ({ ...prev, 'i': (prev['i'] || 0) + 1 }));
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 600));
+    }
+
+    setExecutingBlockIndex(null);
+    handleRun();
   };
 
   const handleRun = () => {
     // Check if solution matches
     const selectedIds = selectedBlocks.map(b => b.id);
     const solutionIds = currentProblem.solution;
-    
+
     // Check if blocks are correct (order matters)
     const isCorrect = selectedIds.length === solutionIds.length &&
       selectedIds.every((id, idx) => id === solutionIds[idx]);
-    
+
+    if (isCorrect) playSfx('success');
+    else playSfx('error');
+
     // Simulate test results
     const results = currentProblem.testCases.map(() => isCorrect);
     setTestResults(results);
@@ -109,16 +201,18 @@ export function AlgorithmBuilderChallenge({ onComplete }: AlgorithmBuilderChalle
     const efficiencyScore = Math.max(0, 30 - (selectedIds.length - solutionIds.length) * 5);
     const eleganceScore = isCorrect ? 20 : 0;
     const problemScore = correctnessScore + efficiencyScore + eleganceScore;
-    
+
     setProblemScores([...problemScores, problemScore]);
   };
 
   const handleNext = () => {
+    playSfx('click');
     if (currentProblemIndex < PROBLEMS.length - 1) {
       setCurrentProblemIndex(prev => prev + 1);
       setSelectedBlocks([]);
       setTestResults([]);
       setShowResults(false);
+      setVariables({});
     } else {
       // Calculate final score
       const totalScore = [...problemScores, problemScores[problemScores.length]].reduce((a, b) => a + b, 0);
@@ -141,49 +235,106 @@ export function AlgorithmBuilderChallenge({ onComplete }: AlgorithmBuilderChalle
             {PROBLEMS.map((_, idx) => (
               <div
                 key={idx}
-                className={`w-3 h-3 rounded-full ${
-                  idx < currentProblemIndex
-                    ? 'bg-green-500'
-                    : idx === currentProblemIndex
+                className={`w-3 h-3 rounded-full ${idx < currentProblemIndex
+                  ? 'bg-green-500'
+                  : idx === currentProblemIndex
                     ? 'bg-emerald-500'
                     : 'bg-gray-300'
-                }`}
+                  }`}
               />
             ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-12 gap-6 mb-6">
           {/* Problem Description */}
-          <div className="bg-blue-50 rounded-xl p-6">
+          <div className="col-span-4 bg-blue-50 rounded-xl p-6">
             <h4 className="font-bold text-xl text-gray-900 mb-3">
               {currentProblem.title}
             </h4>
             <p className="text-gray-700 mb-4">{currentProblem.description}</p>
-            
+
             <div className="space-y-2">
-              <div className="bg-white rounded-lg p-3">
+              <div className="bg-white rounded-lg p-3 border border-blue-100">
                 <div className="text-sm font-semibold text-gray-600 mb-1">Input:</div>
-                <code className="text-green-600">{currentProblem.input}</code>
+                <code className="text-green-600 font-mono bg-green-50 px-2 py-1 rounded">{currentProblem.input}</code>
               </div>
-              <div className="bg-white rounded-lg p-3">
+              <div className="bg-white rounded-lg p-3 border border-blue-100">
                 <div className="text-sm font-semibold text-gray-600 mb-1">Expected Output:</div>
-                <code className="text-blue-600">{currentProblem.expectedOutput}</code>
+                <code className="text-blue-600 font-mono bg-blue-50 px-2 py-1 rounded">{currentProblem.expectedOutput}</code>
               </div>
+            </div>
+
+            {/* Variable Watcher */}
+            <div className="mt-6 bg-gray-900 rounded-xl p-4 text-green-400 font-mono text-sm min-h-[150px]">
+              <div className="flex items-center gap-2 border-b border-gray-700 pb-2 mb-2">
+                <Cpu size={16} />
+                <span>Memory Watch</span>
+              </div>
+              {Object.keys(variables).length === 0 ? (
+                <span className="text-gray-500 italic">// Variables will appear here during execution...</span>
+              ) : (
+                <div className="space-y-1">
+                  {Object.entries(variables).map(([key, value]) => (
+                    <div key={key} className="flex justify-between">
+                      <span className="text-blue-400">{key}:</span>
+                      <span className="text-yellow-400">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
+          {/* Algorithm Building Area */}
+          <div className="col-span-5 bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl p-6 min-h-[500px] flex flex-col">
+            <div className="flex items-center gap-2 mb-4">
+              <Code2 className="w-5 h-5 text-green-400" />
+              <span className="text-green-400 font-mono text-sm">Main Function</span>
+            </div>
+
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={selectedBlocks.map(b => b.uid!)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-2 flex-1">
+                  <AnimatePresence>
+                    {selectedBlocks.length === 0 ? (
+                      <div className="text-center text-gray-500 py-8 border-2 border-dashed border-gray-700 rounded-lg">
+                        Drag blocks here to build your algorithm
+                      </div>
+                    ) : (
+                      selectedBlocks.map((block, index) => (
+                        <SortableBlock
+                          key={block.uid}
+                          block={block}
+                          onRemove={() => handleRemoveBlock(block.uid!)}
+                          isActive={executingBlockIndex === index}
+                        />
+                      ))
+                    )}
+                  </AnimatePresence>
+                </div>
+              </SortableContext>
+            </DndContext>
+          </div>
+
           {/* Code Blocks Palette */}
-          <div className="bg-gray-50 rounded-xl p-6">
-            <h4 className="font-bold text-gray-900 mb-4">Code Blocks</h4>
-            <div className="grid grid-cols-2 gap-2">
+          <div className="col-span-3 bg-gray-50 rounded-xl p-4 h-full overflow-y-auto max-h-[600px]">
+            <h4 className="font-bold text-gray-900 mb-4 sticky top-0 bg-gray-50 pb-2">Toolbox</h4>
+            <div className="space-y-2">
               {CODE_BLOCKS.map(block => (
                 <button
                   key={block.id}
                   onClick={() => handleBlockClick(block)}
-                  className="flex items-center gap-2 p-3 bg-white rounded-lg border-2 border-gray-200 hover:border-green-500 transition-all text-left group"
+                  className="w-full flex items-center gap-2 p-3 bg-white rounded-lg border-2 border-gray-200 hover:border-green-500 transition-all text-left group transform hover:translate-x-1"
                 >
-                  <span className="text-2xl">{block.icon}</span>
+                  <span className="text-xl">{block.icon}</span>
                   <span className="text-sm font-medium text-gray-700 group-hover:text-green-600">
                     {block.label}
                   </span>
@@ -193,83 +344,80 @@ export function AlgorithmBuilderChallenge({ onComplete }: AlgorithmBuilderChalle
           </div>
         </div>
 
-        {/* Algorithm Building Area */}
-        <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl p-6 mb-6 min-h-[200px]">
-          <div className="flex items-center gap-2 mb-4">
-            <Code2 className="w-5 h-5 text-green-400" />
-            <span className="text-green-400 font-mono text-sm">Your Algorithm</span>
-          </div>
-          
-          {selectedBlocks.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">
-              Click blocks above to build your algorithm
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {selectedBlocks.map((block, index) => (
-                <div
-                  key={`${block.id}-${index}`}
-                  onClick={() => handleRemoveBlock(index)}
-                  className="flex items-center gap-3 bg-gray-700 hover:bg-gray-600 rounded-lg p-3 cursor-pointer transition-all group"
-                  style={{ marginLeft: `${block.type === 'condition' ? 0 : 20}px` }}
-                >
-                  <span className="text-2xl">{block.icon}</span>
-                  <span className="text-white font-mono text-sm flex-1">{block.label}</span>
-                  <span className="text-gray-400 text-xs opacity-0 group-hover:opacity-100">Click to remove</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* Test Results */}
-        {showResults && (
-          <div className="bg-green-50 rounded-xl p-6 mb-6">
-            <h4 className="font-bold text-gray-900 mb-4">Test Results</h4>
-            <div className="space-y-2">
-              {currentProblem.testCases.map((test, idx) => (
-                <div
-                  key={idx}
-                  className={`flex items-center gap-3 p-3 rounded-lg ${
-                    testResults[idx] ? 'bg-green-100' : 'bg-red-100'
-                  }`}
-                >
-                  {testResults[idx] ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-600" />
-                  ) : (
-                    <span className="text-red-600">✗</span>
-                  )}
-                  <span className="text-sm font-mono">
-                    Input: {test.input} → Expected: {test.output}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <AnimatePresence>
+          {showResults && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-green-50 rounded-xl p-6 mb-6 overflow-hidden"
+            >
+              <h4 className="font-bold text-gray-900 mb-4">Test Results</h4>
+              <div className="space-y-2">
+                {currentProblem.testCases.map((test, idx) => (
+                  <motion.div
+                    key={idx}
+                    initial={{ x: -20, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ delay: idx * 0.1 }}
+                    className={`flex items-center gap-3 p-3 rounded-lg ${testResults[idx] ? 'bg-green-100' : 'bg-red-100'
+                      }`}
+                  >
+                    {testResults[idx] ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-600" />
+                    ) : (
+                      <span className="text-red-600">✗</span>
+                    )}
+                    <span className="text-sm font-mono">
+                      Input: {test.input} <ArrowRight className="inline w-3 h-3" /> Expected: {test.output}
+                    </span>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Action Buttons */}
         <div className="flex gap-4">
           <button
-            onClick={() => setSelectedBlocks([])}
+            onClick={() => {
+              playSfx('click');
+              setSelectedBlocks([]);
+            }}
             className="px-6 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-colors"
           >
             Clear
           </button>
-          
+
           {!showResults ? (
             <button
-              onClick={handleRun}
-              disabled={selectedBlocks.length === 0}
-              className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={simulateExecution}
+              disabled={selectedBlocks.length === 0 || executingBlockIndex !== null}
+              className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95"
             >
-              <Play className="w-5 h-5" />
-              Run Algorithm
+              {executingBlockIndex !== null ? (
+                <>
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                  >
+                    <Cpu className="w-5 h-5" />
+                  </motion.div>
+                  Running...
+                </>
+              ) : (
+                <>
+                  <Play className="w-5 h-5" />
+                  Run Algorithm
+                </>
+              )}
             </button>
           ) : (
             <button
               onClick={handleNext}
-              className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-colors"
+              className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-colors transform active:scale-95"
             >
               {currentProblemIndex < PROBLEMS.length - 1 ? 'Next Problem' : 'Complete Challenge'}
             </button>

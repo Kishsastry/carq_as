@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { Bug, CheckCircle2, XCircle } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Bug, CheckCircle2, XCircle, Play, Terminal, Code2 } from 'lucide-react';
+import { useAudio } from '../../contexts/AudioContext';
+import { motion } from 'framer-motion';
 
 interface CodeLine {
   id: number;
@@ -7,13 +9,14 @@ interface CodeLine {
   hasBug: boolean;
   bugType?: 'syntax' | 'logic';
   explanation?: string;
+  errorMessage?: string;
 }
 
 const CODE_SAMPLES: CodeLine[][] = [
   [
     { id: 1, code: 'function calculateTotal(items) {', hasBug: false },
     { id: 2, code: '  let total = 0;', hasBug: false },
-    { id: 3, code: '  for (let i = 0; i <= items.length; i++) {', hasBug: true, bugType: 'logic', explanation: 'Should be i < items.length to avoid out-of-bounds' },
+    { id: 3, code: '  for (let i = 0; i <= items.length; i++) {', hasBug: true, bugType: 'logic', explanation: 'Off-by-one error: Loop goes out of bounds.', errorMessage: 'TypeError: Cannot read properties of undefined (reading \'price\')' },
     { id: 4, code: '    total += items[i].price;', hasBug: false },
     { id: 5, code: '  }', hasBug: false },
     { id: 6, code: '  return total;', hasBug: false },
@@ -23,7 +26,7 @@ const CODE_SAMPLES: CodeLine[][] = [
     { id: 1, code: 'class User {', hasBug: false },
     { id: 2, code: '  constructor(name, email) {', hasBug: false },
     { id: 3, code: '    this.name = name;', hasBug: false },
-    { id: 4, code: '    this.email = email', hasBug: true, bugType: 'syntax', explanation: 'Missing semicolon' },
+    { id: 4, code: '    this.email = email', hasBug: true, bugType: 'syntax', explanation: 'Missing semicolon at end of line.', errorMessage: 'SyntaxError: Unexpected token }' },
     { id: 5, code: '  }', hasBug: false },
     { id: 6, code: '  validateEmail() {', hasBug: false },
     { id: 7, code: '    return this.email.includes("@");', hasBug: false },
@@ -32,7 +35,7 @@ const CODE_SAMPLES: CodeLine[][] = [
   ],
   [
     { id: 1, code: 'function sortNumbers(arr) {', hasBug: false },
-    { id: 2, code: '  return arr.sort();', hasBug: true, bugType: 'logic', explanation: 'sort() treats numbers as strings, use (a, b) => a - b' },
+    { id: 2, code: '  return arr.sort();', hasBug: true, bugType: 'logic', explanation: 'Default sort converts numbers to strings.', errorMessage: 'AssertionError: Expected [5, 10, 25, 40] but got [10, 25, 40, 5]' },
     { id: 3, code: '}', hasBug: false },
     { id: 4, code: '', hasBug: false },
     { id: 5, code: 'const numbers = [10, 5, 40, 25];', hasBug: false },
@@ -48,23 +51,71 @@ export function BugHuntChallenge({ onComplete }: BugHuntChallengeProps) {
   const [currentCodeIndex, setCurrentCodeIndex] = useState(0);
   const [selectedLines, setSelectedLines] = useState<Set<number>>(new Set());
   const [results, setResults] = useState<{ correct: number; incorrect: number }[]>([]);
+  const [consoleOutput, setConsoleOutput] = useState<string[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [hasRun, setHasRun] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedback, setFeedback] = useState<{ lineId: number; correct: boolean; explanation?: string } | null>(null);
+  const { playSfx } = useAudio();
+  const consoleRef = useRef<HTMLDivElement>(null);
 
   const currentCode = CODE_SAMPLES[currentCodeIndex];
   const bugsInCode = currentCode.filter(line => line.hasBug).length;
 
+  useEffect(() => {
+    if (consoleRef.current) {
+      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
+    }
+  }, [consoleOutput]);
+
+  const runCode = () => {
+    if (isRunning) return;
+    setIsRunning(true);
+    setConsoleOutput(['> Compiling...', '> Running tests...']);
+    playSfx('click');
+
+    setTimeout(() => {
+      const bugs = currentCode.filter(line => line.hasBug);
+      const newOutput = [...consoleOutput];
+
+      if (bugs.length > 0) {
+        newOutput.push(`❌ Error detected!`);
+        bugs.forEach(bug => {
+          if (bug.errorMessage) {
+            newOutput.push(`   ${bug.errorMessage}`);
+          }
+        });
+        playSfx('error');
+      } else {
+        newOutput.push('✅ All tests passed!');
+        playSfx('success');
+      }
+
+      setConsoleOutput(newOutput);
+      setIsRunning(false);
+      setHasRun(true);
+    }, 1500);
+  };
+
   const handleLineClick = (line: CodeLine) => {
-    if (showFeedback) return;
+    if (!hasRun) {
+      setConsoleOutput(prev => [...prev, '⚠️ Please run the code first to identify errors!']);
+      return;
+    }
+
+    if (showFeedback || selectedLines.has(line.id)) return;
 
     const newSelected = new Set(selectedLines);
-    
+
     if (line.hasBug) {
       // Correct bug found
       newSelected.add(line.id);
       setSelectedLines(newSelected);
       setFeedback({ lineId: line.id, correct: true, explanation: line.explanation });
       setShowFeedback(true);
+      playSfx('success');
+
+      setConsoleOutput(prev => [...prev, `> Fixing line ${line.id}...`, `✅ Bug fixed: ${line.explanation}`]);
 
       setTimeout(() => {
         setShowFeedback(false);
@@ -74,6 +125,9 @@ export function BugHuntChallenge({ onComplete }: BugHuntChallengeProps) {
       // False positive
       setFeedback({ lineId: line.id, correct: false });
       setShowFeedback(true);
+      playSfx('error');
+
+      setConsoleOutput(prev => [...prev, `> Checking line ${line.id}...`, `ℹ️ No issues found on this line.`]);
 
       setTimeout(() => {
         setShowFeedback(false);
@@ -83,136 +137,208 @@ export function BugHuntChallenge({ onComplete }: BugHuntChallengeProps) {
   };
 
   const handleSubmit = () => {
-    const bugsFound = Array.from(selectedLines).filter(id => 
+    const bugsFound = Array.from(selectedLines).filter(id =>
       currentCode.find(line => line.id === id)?.hasBug
     ).length;
-    
+
     const correctCount = bugsFound;
-    const incorrectCount = selectedLines.size - bugsFound;
-    
+    const incorrectCount = selectedLines.size - bugsFound; // Actually, incorrect clicks don't add to selectedLines in this logic, but let's keep it simple
+
     setResults([...results, { correct: correctCount, incorrect: incorrectCount }]);
 
     if (currentCodeIndex < CODE_SAMPLES.length - 1) {
       setCurrentCodeIndex(prev => prev + 1);
       setSelectedLines(new Set());
+      setConsoleOutput([]);
+      setHasRun(false);
       setShowFeedback(false);
       setFeedback(null);
     } else {
       // Calculate final score
       const totalCorrect = [...results, { correct: correctCount, incorrect: incorrectCount }]
         .reduce((sum, r) => sum + r.correct, 0);
-      const totalIncorrect = [...results, { correct: correctCount, incorrect: incorrectCount }]
-        .reduce((sum, r) => sum + r.incorrect, 0);
-      
-      const totalBugs = CODE_SAMPLES.reduce((sum, code) => 
+
+      const totalBugs = CODE_SAMPLES.reduce((sum, code) =>
         sum + code.filter(line => line.hasBug).length, 0
       );
-      
-      const score = Math.max(0, Math.round((totalCorrect * 10 - totalIncorrect * 5) / totalBugs * 100));
+
+      const score = Math.max(0, Math.round((totalCorrect / totalBugs) * 100));
       onComplete(Math.min(100, score));
     }
   };
 
   return (
-    <div className="max-w-5xl mx-auto p-6">
-      <div className="bg-white rounded-2xl shadow-lg p-8">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Bug className="w-8 h-8 text-green-600" />
-            <h3 className="text-2xl font-bold text-gray-900">
-              Bug Hunt Detective
-            </h3>
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="bg-gray-900 rounded-xl shadow-2xl overflow-hidden border border-gray-700 flex flex-col h-[800px]">
+        {/* IDE Header */}
+        <div className="bg-gray-800 px-4 py-2 flex items-center justify-between border-b border-gray-700">
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1.5">
+              <div className="w-3 h-3 rounded-full bg-red-500" />
+              <div className="w-3 h-3 rounded-full bg-yellow-500" />
+              <div className="w-3 h-3 rounded-full bg-green-500" />
+            </div>
+            <div className="ml-4 flex items-center gap-2 text-gray-400 bg-gray-900 px-3 py-1 rounded text-sm font-mono">
+              <Code2 size={14} />
+              challenge_{currentCodeIndex + 1}.js
+            </div>
           </div>
-          <div className="flex gap-2">
-            {CODE_SAMPLES.map((_, idx) => (
-              <div
-                key={idx}
-                className={`w-3 h-3 rounded-full ${
-                  idx < currentCodeIndex
+
+          <div className="flex items-center gap-4">
+            <div className="flex gap-1">
+              {CODE_SAMPLES.map((_, idx) => (
+                <div
+                  key={idx}
+                  className={`w-2 h-2 rounded-full ${idx < currentCodeIndex
                     ? 'bg-green-500'
                     : idx === currentCodeIndex
-                    ? 'bg-emerald-500'
-                    : 'bg-gray-300'
+                      ? 'bg-blue-500'
+                      : 'bg-gray-600'
+                    }`}
+                />
+              ))}
+            </div>
+            <button
+              onClick={runCode}
+              disabled={isRunning || hasRun}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded font-bold text-sm transition-colors ${isRunning || hasRun
+                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-700 text-white'
                 }`}
-              />
-            ))}
+            >
+              <Play size={14} />
+              {isRunning ? 'Running...' : 'Run Code'}
+            </button>
           </div>
         </div>
 
-        <div className="bg-green-50 rounded-xl p-4 mb-6">
-          <p className="text-center text-gray-700">
-            <strong>Mission:</strong> Click on lines with bugs to identify them. 
-            This code has <strong>{bugsInCode}</strong> {bugsInCode === 1 ? 'bug' : 'bugs'}.
-          </p>
-        </div>
+        <div className="flex flex-1 overflow-hidden">
+          {/* Line Numbers & Code */}
+          <div className="flex-1 overflow-y-auto p-4 font-mono text-sm relative">
+            {currentCode.map((line) => {
+              const isSelected = selectedLines.has(line.id);
+              const isFeedbackLine = feedback?.lineId === line.id;
 
-        <div className="bg-gray-900 rounded-xl p-6 mb-6 font-mono text-sm">
-          {currentCode.map((line) => {
-            const isSelected = selectedLines.has(line.id);
-            const isFeedbackLine = feedback?.lineId === line.id;
-            
-            return (
-              <div
-                key={line.id}
-                onClick={() => handleLineClick(line)}
-                className={`py-2 px-4 rounded cursor-pointer transition-all relative ${
-                  isSelected
-                    ? 'bg-green-900 text-green-100'
+              return (
+                <div
+                  key={line.id}
+                  onClick={() => handleLineClick(line)}
+                  className={`group flex items-center py-1 px-2 rounded cursor-pointer transition-all ${isSelected
+                    ? 'bg-green-900/30 border-l-2 border-green-500'
                     : isFeedbackLine
-                    ? feedback.correct
-                      ? 'bg-green-600 text-white'
-                      : 'bg-red-600 text-white'
-                    : 'hover:bg-gray-800 text-gray-100'
-                }`}
+                      ? feedback.correct
+                        ? 'bg-green-900/50'
+                        : 'bg-red-900/50'
+                      : 'hover:bg-gray-800'
+                    }`}
+                >
+                  <span className="text-gray-600 w-8 text-right mr-4 select-none">{line.id}</span>
+                  <span className={`${isSelected ? 'text-green-300' : 'text-gray-300'}`}>
+                    {line.code || ' '}
+                  </span>
+
+                  {isSelected && line.hasBug && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="ml-auto flex items-center gap-2 text-green-400 text-xs"
+                    >
+                      <CheckCircle2 size={14} />
+                      <span>Fixed</span>
+                    </motion.div>
+                  )}
+
+                  {isFeedbackLine && !feedback.correct && (
+                    <motion.div
+                      initial={{ opacity: 0, x: 10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="ml-auto flex items-center gap-2 text-red-400 text-xs"
+                    >
+                      <XCircle size={14} />
+                      <span>No bug here</span>
+                    </motion.div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Overlay for "Run First" */}
+            {!hasRun && (
+              <div className="absolute inset-0 bg-gray-900/10 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
+                <div className="bg-gray-800 text-white px-6 py-3 rounded-xl shadow-xl border border-gray-600 flex items-center gap-3 animate-bounce">
+                  <Play size={20} className="text-green-500" />
+                  <span>Click "Run Code" to start debugging!</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Sidebar / Info Panel */}
+          <div className="w-80 bg-gray-800 border-l border-gray-700 p-4 flex flex-col">
+            <div className="mb-6">
+              <h3 className="text-gray-100 font-bold flex items-center gap-2 mb-2">
+                <Bug className="text-blue-400" size={18} />
+                Mission Brief
+              </h3>
+              <p className="text-gray-400 text-sm">
+                Analyze the code, run the diagnostics, and fix the {bugsInCode} bug(s) causing the system failure.
+              </p>
+            </div>
+
+            <div className="flex-1 flex flex-col min-h-0">
+              <h3 className="text-gray-100 font-bold flex items-center gap-2 mb-2">
+                <Terminal className="text-gray-400" size={18} />
+                Debug Console
+              </h3>
+              <div
+                ref={consoleRef}
+                className="flex-1 bg-black rounded-lg p-3 font-mono text-xs text-gray-300 overflow-y-auto border border-gray-700 shadow-inner"
               >
-                <span className="text-gray-500 mr-4 select-none">{line.id}</span>
-                <span>{line.code || ' '}</span>
-                
-                {isSelected && line.hasBug && (
-                  <CheckCircle2 className="w-4 h-4 text-green-400 absolute right-4 top-1/2 -translate-y-1/2" />
+                {consoleOutput.length === 0 ? (
+                  <span className="text-gray-600 italic">Ready to compile...</span>
+                ) : (
+                  consoleOutput.map((log, i) => (
+                    <div key={i} className={`mb-1 ${log.includes('❌') ? 'text-red-400' :
+                      log.includes('✅') ? 'text-green-400' :
+                        log.includes('⚠️') ? 'text-yellow-400' : ''
+                      }`}>
+                      {log}
+                    </div>
+                  ))
                 )}
-                {isFeedbackLine && !feedback.correct && (
-                  <XCircle className="w-4 h-4 text-white absolute right-4 top-1/2 -translate-y-1/2" />
+                {isRunning && (
+                  <motion.div
+                    animate={{ opacity: [0, 1, 0] }}
+                    transition={{ repeat: Infinity, duration: 0.8 }}
+                    className="w-2 h-4 bg-gray-400 inline-block align-middle ml-1"
+                  />
                 )}
               </div>
-            );
-          })}
-        </div>
+            </div>
 
-        {showFeedback && feedback?.correct && feedback.explanation && (
-          <div className="bg-green-100 border-2 border-green-500 rounded-xl p-4 mb-6 animate-pulse">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <div className="font-bold text-green-900 mb-1">Bug Found! 🐛</div>
-                <div className="text-green-800">{feedback.explanation}</div>
+            <div className="mt-6 pt-6 border-t border-gray-700">
+              <div className="flex justify-between items-center mb-4 text-sm">
+                <span className="text-gray-400">Progress</span>
+                <span className="text-white font-bold">{selectedLines.size} / {bugsInCode} Fixed</span>
               </div>
+              <button
+                onClick={() => {
+                  playSfx('click');
+                  handleSubmit();
+                }}
+                disabled={selectedLines.size !== bugsInCode}
+                className={`w-full py-3 rounded-lg font-bold transition-all ${selectedLines.size === bugsInCode
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg hover:shadow-blue-500/25'
+                  : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                  }`}
+              >
+                {currentCodeIndex < CODE_SAMPLES.length - 1 ? 'Next Challenge' : 'Submit Report'}
+              </button>
             </div>
           </div>
-        )}
-
-        {showFeedback && !feedback?.correct && (
-          <div className="bg-red-100 border-2 border-red-500 rounded-xl p-4 mb-6">
-            <div className="flex items-center gap-2">
-              <XCircle className="w-5 h-5 text-red-600" />
-              <span className="text-red-900 font-semibold">No bug on this line. Keep looking!</span>
-            </div>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between">
-          <div className="text-gray-700">
-            <span className="font-semibold">Bugs Found:</span> {selectedLines.size} / {bugsInCode}
-          </div>
-          
-          <button
-            onClick={handleSubmit}
-            className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-colors"
-          >
-            {currentCodeIndex < CODE_SAMPLES.length - 1 ? 'Next Code' : 'Submit Results'}
-          </button>
         </div>
       </div>
     </div>
   );
 }
+

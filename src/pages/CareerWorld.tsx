@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trophy, Star, Lock } from 'lucide-react';
+import { ArrowLeft, Trophy, Star, Lock, Volume2, VolumeX } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useAudio } from '../contexts/AudioContext';
 import type { Career, Challenge, UserChallengeProgress, ColorScheme } from '../lib/database.types';
 import { CulinaryArtsGame } from '../games/CulinaryArts';
 import { InformationTechnologyGame } from '../games/InformationTechnology';
@@ -14,6 +15,7 @@ export function CareerWorld() {
   const { careerSlug } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { muted, toggleMute } = useAudio();
 
   const [career, setCareer] = useState<Career | null>(null);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
@@ -71,25 +73,33 @@ export function CareerWorld() {
   };
 
   const handleChallengeComplete = async (challengeId: string, score: number) => {
-    if (!user) return;
+    if (!user || !career) return;
 
     try {
       const existingProgress = progress[challengeId];
+      let scoreDiff = 0;
+      let isNewCompletion = false;
 
       if (existingProgress) {
-        const newBestScore = Math.max(existingProgress.best_score, score);
+        if (score > existingProgress.best_score) {
+          scoreDiff = score - existingProgress.best_score;
+        }
+
         await supabase
           .from('user_challenge_progress')
           .update({
             status: 'completed',
             score,
-            best_score: newBestScore,
+            best_score: Math.max(existingProgress.best_score, score),
             attempts: existingProgress.attempts + 1,
             completed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq('id', existingProgress.id);
       } else {
+        scoreDiff = score;
+        isNewCompletion = true;
+
         await supabase
           .from('user_challenge_progress')
           .insert({
@@ -101,6 +111,95 @@ export function CareerWorld() {
             attempts: 1,
             completed_at: new Date().toISOString(),
           });
+      }
+
+      // Update Profile (Total Score & XP)
+      if (scoreDiff > 0) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('total_score, experience, level')
+          .eq('id', user.id)
+          .single();
+
+        if (profile) {
+          const newTotalScore = (profile.total_score || 0) + scoreDiff;
+          const newExperience = (profile.experience || 0) + scoreDiff; // 1 point = 1 XP
+          const newLevel = Math.floor(newExperience / 100) + 1;
+
+          await supabase
+            .from('profiles')
+            .update({
+              total_score: newTotalScore,
+              experience: newExperience,
+              level: newLevel,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', user.id);
+        }
+      }
+
+      // Check for Career Completion
+      // We need to know if ALL challenges for this career are now completed
+      const updatedProgress = { ...progress };
+      if (isNewCompletion) {
+        // Mock the new progress for the check
+        updatedProgress[challengeId] = { status: 'completed' } as UserChallengeProgress;
+      }
+
+      const allChallengesCompleted = challenges.every(c =>
+        (updatedProgress[c.id]?.status === 'completed') || (c.id === challengeId) // Ensure current one counts
+      );
+
+      if (allChallengesCompleted) {
+        // Check if career progress exists
+        const { data: careerProgress } = await supabase
+          .from('user_career_progress')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('career_id', career.id)
+          .maybeSingle();
+
+        if (careerProgress) {
+          if (careerProgress.status !== 'completed') {
+            await supabase
+              .from('user_career_progress')
+              .update({
+                status: 'completed',
+                completed_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', careerProgress.id);
+          }
+        } else {
+          await supabase
+            .from('user_career_progress')
+            .insert({
+              user_id: user.id,
+              career_id: career.id,
+              status: 'completed',
+              started_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
+            });
+        }
+      } else {
+        // Ensure career is marked as in_progress if not already
+        const { data: careerProgress } = await supabase
+          .from('user_career_progress')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('career_id', career.id)
+          .maybeSingle();
+
+        if (!careerProgress) {
+          await supabase
+            .from('user_career_progress')
+            .insert({
+              user_id: user.id,
+              career_id: career.id,
+              status: 'in_progress',
+              started_at: new Date().toISOString(),
+            });
+        }
       }
 
       loadCareerData();
@@ -214,6 +313,14 @@ export function CareerWorld() {
                 {Object.values(progress).reduce((sum, p) => sum + p.best_score, 0)}
               </span>
             </div>
+
+            <button
+              onClick={() => toggleMute()}
+              className="ml-4 p-2 rounded-lg hover:bg-white/50 transition-colors"
+              title={muted ? "Unmute" : "Mute"}
+            >
+              {muted ? <VolumeX className="w-5 h-5" style={{ color: colorScheme.primary }} /> : <Volume2 className="w-5 h-5" style={{ color: colorScheme.primary }} />}
+            </button>
           </div>
         </div>
       </nav>
@@ -237,9 +344,8 @@ export function CareerWorld() {
             return (
               <div
                 key={challenge.id}
-                className={`bg-white rounded-2xl shadow-lg overflow-hidden transition-all ${
-                  isLocked ? 'opacity-60' : 'hover:shadow-xl'
-                }`}
+                className={`bg-white rounded-2xl shadow-lg overflow-hidden transition-all ${isLocked ? 'opacity-60' : 'hover:shadow-xl'
+                  }`}
               >
                 <div
                   className="h-2"

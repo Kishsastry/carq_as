@@ -1,475 +1,175 @@
 import { useState } from 'react';
-import { FileText, Star as StarIcon } from 'lucide-react';
+import { Layout, Image as ImageIcon, Type, Printer } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useAudio } from '../../contexts/AudioContext';
 
-interface Fact {
+interface StoryElement {
   id: string;
-  text: string;
-  category: 'lede' | 'body' | 'conclusion';
+  type: 'headline' | 'image' | 'text';
+  content: string;
+  size: 'small' | 'medium' | 'large';
+  category: 'politics' | 'sports' | 'tech';
 }
 
-interface Quote {
-  id: string;
-  text: string;
-  speaker: string;
-}
-
-interface HeadlineOption {
-  id: string;
-  text: string;
-  effectiveness: number;
-}
-
-const FACTS: Fact[] = [
-  { id: 'f1', text: 'Arctic ice melt rate accelerated 40% faster than previous decade', category: 'lede' },
-  { id: 'f2', text: 'Study focused on Arctic ice melt rates over 20 years', category: 'body' },
-  { id: 'f3', text: 'Used satellite data and ground measurements from 15 research stations', category: 'body' },
-  { id: 'f4', text: 'Predicts 2-foot sea level rise by 2050 affecting 100M people', category: 'body' },
-  { id: 'f5', text: 'Immediate 50% carbon emission reduction needed to slow progression', category: 'conclusion' },
-  { id: 'f6', text: 'Dr. Sarah Chen led the groundbreaking climate research', category: 'body' },
+const ELEMENTS: StoryElement[] = [
+  { id: 'e1', type: 'headline', content: "MAYOR ANNOUNCES NEW PARK", size: 'large', category: 'politics' },
+  { id: 'e2', type: 'image', content: "🌳", size: 'medium', category: 'politics' },
+  { id: 'e3', type: 'text', content: "Local residents celebrate the green initiative...", size: 'small', category: 'politics' },
+  { id: 'e4', type: 'headline', content: "LOCAL TEAM WINS CHAMPIONSHIP", size: 'large', category: 'sports' },
+  { id: 'e5', type: 'image', content: "🏆", size: 'medium', category: 'sports' },
+  { id: 'e6', type: 'text', content: "A stunning victory in overtime...", size: 'small', category: 'sports' },
 ];
-
-const QUOTES: Quote[] = [
-  { id: 'qu1', text: 'The acceleration we\'re seeing is unprecedented and alarming.', speaker: 'Dr. Sarah Chen' },
-  { id: 'qu2', text: 'This isn\'t just about polar bears anymore, it\'s about human survival.', speaker: 'Dr. Sarah Chen' },
-  { id: 'qu3', text: 'We have a narrow window to act before the damage becomes irreversible.', speaker: 'Dr. Sarah Chen' },
-];
-
-const HEADLINES: HeadlineOption[] = [
-  { id: 'h1', text: 'Arctic Ice Melting Faster Than Ever, New Study Reveals', effectiveness: 85 },
-  { id: 'h2', text: 'Scientists Say Something About Ice', effectiveness: 30 },
-  { id: 'h3', text: 'Climate Crisis: Arctic Melt Accelerates 40%, Threatening 100M People', effectiveness: 95 },
-  { id: 'h4', text: 'Ice Study Results Published', effectiveness: 25 },
-];
-
-interface ArticleSection {
-  type: 'lede' | 'body' | 'conclusion';
-  facts: Fact[];
-  quotes: Quote[];
-}
 
 interface StoryCrafterChallengeProps {
   onComplete: (score: number) => void;
 }
 
 export function StoryCrafterChallenge({ onComplete }: StoryCrafterChallengeProps) {
-  const [selectedHeadline, setSelectedHeadline] = useState<string | null>(null);
-  const [article, setArticle] = useState<ArticleSection[]>([
-    { type: 'lede', facts: [], quotes: [] },
-    { type: 'body', facts: [], quotes: [] },
-    { type: 'conclusion', facts: [], quotes: [] },
-  ]);
-  const [availableFacts, setAvailableFacts] = useState<Fact[]>(FACTS);
-  const [availableQuotes, setAvailableQuotes] = useState<Quote[]>(QUOTES);
-  const [showPreview, setShowPreview] = useState(false);
-  const [editorFeedback, setEditorFeedback] = useState<{ engagement: number; clarity: number; accuracy: number } | null>(null);
+  const [layout, setLayout] = useState<(StoryElement | null)[]>(Array(4).fill(null)); // 2x2 grid for simplicity
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [score, setScore] = useState(0);
+  const { playSfx } = useAudio();
 
-  const handleFactDrop = (fact: Fact, sectionIndex: number) => {
-    const newArticle = [...article];
-    newArticle[sectionIndex].facts.push(fact);
-    setArticle(newArticle);
-    setAvailableFacts(availableFacts.filter(f => f.id !== fact.id));
+  const handleDragStart = (e: React.DragEvent, element: StoryElement) => {
+    e.dataTransfer.setData('elementId', element.id);
   };
 
-  const handleQuoteDrop = (quote: Quote, sectionIndex: number) => {
-    const newArticle = [...article];
-    newArticle[sectionIndex].quotes.push(quote);
-    setArticle(newArticle);
-    setAvailableQuotes(availableQuotes.filter(q => q.id !== quote.id));
-  };
+  const handleDrop = (index: number, e: React.DragEvent) => {
+    e.preventDefault();
+    const elementId = e.dataTransfer.getData('elementId');
+    const element = ELEMENTS.find(el => el.id === elementId);
 
-  const handleRemoveFact = (factId: string, sectionIndex: number) => {
-    const fact = article[sectionIndex].facts.find(f => f.id === factId);
-    if (fact) {
-      const newArticle = [...article];
-      newArticle[sectionIndex].facts = newArticle[sectionIndex].facts.filter(f => f.id !== factId);
-      setArticle(newArticle);
-      setAvailableFacts([...availableFacts, fact]);
-    }
-  };
-
-  const handleRemoveQuote = (quoteId: string, sectionIndex: number) => {
-    const quote = article[sectionIndex].quotes.find(q => q.id === quoteId);
-    if (quote) {
-      const newArticle = [...article];
-      newArticle[sectionIndex].quotes = newArticle[sectionIndex].quotes.filter(q => q.id !== quoteId);
-      setArticle(newArticle);
-      setAvailableQuotes([...availableQuotes, quote]);
+    if (element) {
+      playSfx('click');
+      const newLayout = [...layout];
+      newLayout[index] = element;
+      setLayout(newLayout);
     }
   };
 
   const handlePublish = () => {
-    setShowPreview(true);
+    // Scoring: Check for consistency (same category) and completeness
+    const filledSlots = layout.filter(Boolean);
+    if (filledSlots.length === 0) return;
 
-    // Calculate scores
-    const headlineScore = HEADLINES.find(h => h.id === selectedHeadline)?.effectiveness || 0;
-    
-    // Structure score based on correct placement
-    const ledeHasMainFact = article[0].facts.some(f => f.category === 'lede');
-    const bodyHasSupportingFacts = article[1].facts.length >= 2;
-    const conclusionHasAction = article[2].facts.some(f => f.category === 'conclusion');
-    
-    let structureScore = 0;
-    if (ledeHasMainFact) structureScore += 15;
-    if (bodyHasSupportingFacts) structureScore += 15;
-    if (conclusionHasAction) structureScore += 10;
-    
-    // Quote score
-    const quoteScore = Math.min(30, article.reduce((sum, section) => sum + section.quotes.length, 0) * 10);
+    const categories = filledSlots.map(el => el!.category);
+    const uniqueCategories = new Set(categories);
 
-    const engagement = Math.round((headlineScore * 0.3) + structureScore + (quoteScore * 0.3));
-    const clarity = Math.round(structureScore * 1.2);
-    const accuracy = article.reduce((sum, section) => sum + section.facts.length, 0) >= 4 ? 90 : 70;
+    let calculatedScore = 0;
 
-    setEditorFeedback({ engagement, clarity, accuracy });
+    // Bonus for thematic consistency
+    if (uniqueCategories.size === 1) calculatedScore += 50;
+
+    // Points for filling slots
+    calculatedScore += filledSlots.length * 12.5;
+
+    setScore(calculatedScore);
+    setIsPrinting(true);
+    playSfx('success'); // Printing sound would be better
 
     setTimeout(() => {
-      const finalScore = Math.round((engagement + clarity + accuracy) / 3);
-      onComplete(finalScore);
-    }, 4000);
+      onComplete(calculatedScore);
+    }, 3000);
   };
-
-  const canPublish = selectedHeadline && 
-    article.some(s => s.facts.length > 0 || s.quotes.length > 0);
 
   return (
     <div className="max-w-7xl mx-auto p-6">
-      <div className="bg-white rounded-2xl shadow-lg p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <FileText className="w-8 h-8 text-purple-600" />
-          <h3 className="text-2xl font-bold text-gray-900">
-            Story Crafter
+      <div className="bg-gray-100 rounded-2xl shadow-xl p-8 min-h-[600px] flex gap-8">
+
+        {/* Sidebar - Assets */}
+        <div className="w-1/3 bg-white rounded-xl shadow-sm p-6 overflow-y-auto">
+          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <Layout className="w-5 h-5" /> Assets
           </h3>
+          <div className="space-y-4">
+            {ELEMENTS.map(element => (
+              <div
+                key={element.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, element)}
+                className="p-4 border-2 border-gray-200 rounded-lg cursor-grab active:cursor-grabbing hover:border-blue-400 hover:bg-blue-50 transition-colors"
+              >
+                <div className="flex items-center gap-2 mb-2 text-xs font-bold text-gray-500 uppercase">
+                  {element.type === 'headline' && <Type className="w-3 h-3" />}
+                  {element.type === 'image' && <ImageIcon className="w-3 h-3" />}
+                  {element.type === 'text' && <Layout className="w-3 h-3" />}
+                  {element.type} • {element.category}
+                </div>
+                <div className="font-serif text-gray-900">
+                  {element.type === 'image' ? <span className="text-4xl">{element.content}</span> : element.content}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {!showPreview ? (
-          <>
-            {/* Headline Selection */}
-            <div className="mb-6">
-              <h4 className="font-bold text-gray-900 mb-3">1. Choose Your Headline:</h4>
-              <div className="grid grid-cols-2 gap-3">
-                {HEADLINES.map(headline => (
-                  <button
-                    key={headline.id}
-                    onClick={() => setSelectedHeadline(headline.id)}
-                    className={`p-4 rounded-xl border-2 text-left transition-all ${
-                      selectedHeadline === headline.id
-                        ? 'border-purple-500 bg-purple-50'
-                        : 'border-gray-200 bg-white hover:border-gray-300'
+        {/* Main Editor - Newspaper Layout */}
+        <div className="flex-1 flex flex-col">
+          <div className="flex-1 bg-white shadow-2xl rounded-sm p-8 border border-gray-300 relative overflow-hidden">
+            {/* Newspaper Header */}
+            <div className="text-center border-b-4 border-black pb-4 mb-8">
+              <h1 className="font-serif text-5xl font-black uppercase tracking-tight">The Daily Chronicle</h1>
+              <div className="flex justify-between text-sm font-serif mt-2 border-t border-black pt-1">
+                <span>Vol. CXXI</span>
+                <span>{new Date().toLocaleDateString()}</span>
+                <span>$1.00</span>
+              </div>
+            </div>
+
+            {/* Grid Layout */}
+            <div className="grid grid-cols-2 gap-4 h-[400px]">
+              {layout.map((slot, index) => (
+                <div
+                  key={index}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => handleDrop(index, e)}
+                  className={`border-2 border-dashed rounded-lg flex items-center justify-center p-4 transition-all ${slot ? 'border-transparent bg-gray-50' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
                     }`}
+                >
+                  {slot ? (
+                    <div className="text-center w-full">
+                      {slot.type === 'headline' && <h2 className="font-serif font-bold text-2xl leading-tight">{slot.content}</h2>}
+                      {slot.type === 'image' && <div className="text-6xl">{slot.content}</div>}
+                      {slot.type === 'text' && <p className="font-serif text-sm text-justify columns-2">{slot.content} {slot.content}</p>}
+                    </div>
+                  ) : (
+                    <div className="text-gray-300 font-bold text-sm uppercase">Drop Element Here</div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Printing Animation Overlay */}
+            <AnimatePresence>
+              {isPrinting && (
+                <motion.div
+                  initial={{ y: '100%' }}
+                  animate={{ y: 0 }}
+                  className="absolute inset-0 bg-white z-50 flex flex-col items-center justify-center"
+                >
+                  <motion.div
+                    animate={{ y: [0, -20, 0] }}
+                    transition={{ repeat: Infinity, duration: 0.5 }}
+                    className="mb-8"
                   >
-                    <div className="font-semibold text-gray-900">{headline.text}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
+                    <Printer className="w-24 h-24 text-gray-800" />
+                  </motion.div>
+                  <h2 className="text-3xl font-black font-serif uppercase mb-4">Publishing...</h2>
+                  <div className="text-xl font-bold text-green-600">Score: {score}</div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
-            <div className="grid grid-cols-4 gap-6 mb-6">
-              {/* Available Content */}
-              <div className="col-span-1">
-                <h4 className="font-bold text-gray-900 mb-3">2. Available Content:</h4>
-                
-                <div className="mb-4">
-                  <div className="text-sm font-semibold text-gray-700 mb-2">Facts:</div>
-                  <div className="space-y-2">
-                    {availableFacts.map(fact => (
-                      <div
-                        key={fact.id}
-                        className="bg-blue-50 p-2 rounded-lg border border-blue-200 text-xs"
-                      >
-                        {fact.text}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-sm font-semibold text-gray-700 mb-2">Quotes:</div>
-                  <div className="space-y-2">
-                    {availableQuotes.map(quote => (
-                      <div
-                        key={quote.id}
-                        className="bg-purple-50 p-2 rounded-lg border border-purple-200 text-xs"
-                      >
-                        <div className="font-semibold text-purple-900">{quote.speaker}:</div>
-                        <div className="italic">"{quote.text}"</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Article Builder */}
-              <div className="col-span-3">
-                <h4 className="font-bold text-gray-900 mb-3">3. Build Your Article:</h4>
-                
-                <div className="space-y-4">
-                  {/* Lede */}
-                  <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl p-4 border-2 border-red-200">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-2xl">📌</span>
-                      <div>
-                        <div className="font-bold text-gray-900">Lede (Opening)</div>
-                        <div className="text-xs text-gray-600">Hook readers with the main news</div>
-                      </div>
-                    </div>
-                    
-                    <div className="mb-2">
-                      <div className="text-xs font-semibold text-gray-700 mb-1">Add Facts:</div>
-                      <div className="flex flex-wrap gap-2">
-                        {availableFacts.map(fact => (
-                          <button
-                            key={fact.id}
-                            onClick={() => handleFactDrop(fact, 0)}
-                            className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition-colors"
-                          >
-                            + Add
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      {article[0].facts.map(fact => (
-                        <div key={fact.id} className="bg-white p-2 rounded border border-gray-200 text-sm flex items-start justify-between">
-                          <span>{fact.text}</span>
-                          <button onClick={() => handleRemoveFact(fact.id, 0)} className="text-red-600 ml-2">✕</button>
-                        </div>
-                      ))}
-                      {article[0].quotes.map(quote => (
-                        <div key={quote.id} className="bg-purple-100 p-2 rounded border border-purple-200 text-sm flex items-start justify-between">
-                          <span className="italic">"{quote.text}" - {quote.speaker}</span>
-                          <button onClick={() => handleRemoveQuote(quote.id, 0)} className="text-red-600 ml-2">✕</button>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-2">
-                      <div className="text-xs font-semibold text-gray-700 mb-1">Add Quotes:</div>
-                      <div className="flex flex-wrap gap-2">
-                        {availableQuotes.map(quote => (
-                          <button
-                            key={quote.id}
-                            onClick={() => handleQuoteDrop(quote, 0)}
-                            className="px-2 py-1 bg-purple-500 hover:bg-purple-600 text-white text-xs rounded transition-colors"
-                          >
-                            + Add Quote
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Body */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border-2 border-blue-200">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-2xl">📝</span>
-                      <div>
-                        <div className="font-bold text-gray-900">Body (Details)</div>
-                        <div className="text-xs text-gray-600">Provide context and supporting information</div>
-                      </div>
-                    </div>
-                    
-                    <div className="mb-2">
-                      <div className="flex flex-wrap gap-2">
-                        {availableFacts.map(fact => (
-                          <button
-                            key={fact.id}
-                            onClick={() => handleFactDrop(fact, 1)}
-                            className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition-colors"
-                          >
-                            + Add
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      {article[1].facts.map(fact => (
-                        <div key={fact.id} className="bg-white p-2 rounded border border-gray-200 text-sm flex items-start justify-between">
-                          <span>{fact.text}</span>
-                          <button onClick={() => handleRemoveFact(fact.id, 1)} className="text-red-600 ml-2">✕</button>
-                        </div>
-                      ))}
-                      {article[1].quotes.map(quote => (
-                        <div key={quote.id} className="bg-purple-100 p-2 rounded border border-purple-200 text-sm flex items-start justify-between">
-                          <span className="italic">"{quote.text}" - {quote.speaker}</span>
-                          <button onClick={() => handleRemoveQuote(quote.id, 1)} className="text-red-600 ml-2">✕</button>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-2">
-                      <div className="flex flex-wrap gap-2">
-                        {availableQuotes.map(quote => (
-                          <button
-                            key={quote.id}
-                            onClick={() => handleQuoteDrop(quote, 1)}
-                            className="px-2 py-1 bg-purple-500 hover:bg-purple-600 text-white text-xs rounded transition-colors"
-                          >
-                            + Add Quote
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Conclusion */}
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border-2 border-green-200">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-2xl">🎯</span>
-                      <div>
-                        <div className="font-bold text-gray-900">Conclusion (Call to Action)</div>
-                        <div className="text-xs text-gray-600">End with impact and next steps</div>
-                      </div>
-                    </div>
-                    
-                    <div className="mb-2">
-                      <div className="flex flex-wrap gap-2">
-                        {availableFacts.map(fact => (
-                          <button
-                            key={fact.id}
-                            onClick={() => handleFactDrop(fact, 2)}
-                            className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition-colors"
-                          >
-                            + Add
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      {article[2].facts.map(fact => (
-                        <div key={fact.id} className="bg-white p-2 rounded border border-gray-200 text-sm flex items-start justify-between">
-                          <span>{fact.text}</span>
-                          <button onClick={() => handleRemoveFact(fact.id, 2)} className="text-red-600 ml-2">✕</button>
-                        </div>
-                      ))}
-                      {article[2].quotes.map(quote => (
-                        <div key={quote.id} className="bg-purple-100 p-2 rounded border border-purple-200 text-sm flex items-start justify-between">
-                          <span className="italic">"{quote.text}" - {quote.speaker}</span>
-                          <button onClick={() => handleRemoveQuote(quote.id, 2)} className="text-red-600 ml-2">✕</button>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-2">
-                      <div className="flex flex-wrap gap-2">
-                        {availableQuotes.map(quote => (
-                          <button
-                            key={quote.id}
-                            onClick={() => handleQuoteDrop(quote, 2)}
-                            className="px-2 py-1 bg-purple-500 hover:bg-purple-600 text-white text-xs rounded transition-colors"
-                          >
-                            + Add Quote
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
+          <div className="mt-6 flex justify-end">
             <button
               onClick={handlePublish}
-              disabled={!canPublish}
-              className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-8 py-3 bg-black text-white font-bold rounded-lg shadow-lg hover:bg-gray-800 transition-colors flex items-center gap-2"
             >
-              Publish Article
+              <Printer className="w-5 h-5" /> Publish Edition
             </button>
-          </>
-        ) : (
-          <div>
-            {/* Article Preview */}
-            <div className="bg-gray-50 rounded-xl p-8 mb-6 border-2 border-gray-200">
-              <div className="max-w-3xl mx-auto">
-                <div className="text-sm text-gray-600 mb-2">THE DAILY NEWS</div>
-                <h1 className="text-4xl font-bold text-gray-900 mb-6">
-                  {HEADLINES.find(h => h.id === selectedHeadline)?.text}
-                </h1>
-                
-                {article.map((section, idx) => (
-                  <div key={idx} className="mb-4">
-                    {section.facts.map((fact, fIdx) => (
-                      <p key={fIdx} className="text-gray-800 mb-2 leading-relaxed">{fact.text}</p>
-                    ))}
-                    {section.quotes.map((quote, qIdx) => (
-                      <blockquote key={qIdx} className="border-l-4 border-purple-500 pl-4 my-3 italic text-gray-700">
-                        "{quote.text}" - {quote.speaker}
-                      </blockquote>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Editor Feedback */}
-            {editorFeedback && (
-              <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-6 border-2 border-purple-200">
-                <div className="flex items-start gap-4 mb-4">
-                  <span className="text-6xl">👨‍💼</span>
-                  <div>
-                    <div className="text-xl font-bold text-gray-900 mb-2">Editor's Feedback</div>
-                    <div className="text-gray-700 mb-4">Great work! Here's how your article performed:</div>
-                    
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="bg-white rounded-lg p-4 text-center">
-                        <div className="flex items-center justify-center gap-1 mb-2">
-                          {[1, 2, 3, 4, 5].map(i => (
-                            <StarIcon
-                              key={i}
-                              className={`w-4 h-4 ${
-                                i <= Math.round(editorFeedback.engagement / 20)
-                                  ? 'text-yellow-500 fill-yellow-500'
-                                  : 'text-gray-300'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <div className="text-2xl font-bold text-purple-600">{editorFeedback.engagement}%</div>
-                        <div className="text-sm text-gray-600">Engagement</div>
-                      </div>
-                      
-                      <div className="bg-white rounded-lg p-4 text-center">
-                        <div className="flex items-center justify-center gap-1 mb-2">
-                          {[1, 2, 3, 4, 5].map(i => (
-                            <StarIcon
-                              key={i}
-                              className={`w-4 h-4 ${
-                                i <= Math.round(editorFeedback.clarity / 20)
-                                  ? 'text-yellow-500 fill-yellow-500'
-                                  : 'text-gray-300'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <div className="text-2xl font-bold text-blue-600">{editorFeedback.clarity}%</div>
-                        <div className="text-sm text-gray-600">Clarity</div>
-                      </div>
-                      
-                      <div className="bg-white rounded-lg p-4 text-center">
-                        <div className="flex items-center justify-center gap-1 mb-2">
-                          {[1, 2, 3, 4, 5].map(i => (
-                            <StarIcon
-                              key={i}
-                              className={`w-4 h-4 ${
-                                i <= Math.round(editorFeedback.accuracy / 20)
-                                  ? 'text-yellow-500 fill-yellow-500'
-                                  : 'text-gray-300'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <div className="text-2xl font-bold text-green-600">{editorFeedback.accuracy}%</div>
-                        <div className="text-sm text-gray-600">Accuracy</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

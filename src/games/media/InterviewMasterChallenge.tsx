@@ -1,149 +1,28 @@
-import { useState } from 'react';
-import { MessageSquare, TrendingUp, TrendingDown } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Users, MessageSquare } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useAudio } from '../../contexts/AudioContext';
 
 interface Question {
   id: string;
   text: string;
-  type: 'opening' | 'follow-up' | 'deep-dive';
-  revealsKeyFact: boolean;
-  keyFactText?: string;
-  opensFollowUp?: string[];
-  impactsRapport: number; // -10 to +10
+  type: 'hard' | 'soft' | 'fun';
+  impact: number; // Effect on audience interest
 }
 
-interface Interviewee {
-  name: string;
-  role: string;
-  topic: string;
-  emoji: string;
-  questions: Question[];
-  keyFactsNeeded: number;
-}
+const GUEST = {
+  name: "Senator Smith",
+  role: "Politician",
+  avatar: "👔",
+  topic: "New Education Bill"
+};
 
-const INTERVIEWEES: Interviewee[] = [
-  {
-    name: 'Dr. Sarah Chen',
-    role: 'Climate Scientist',
-    topic: 'Recent Climate Study Findings',
-    emoji: '👩‍🔬',
-    keyFactsNeeded: 5,
-    questions: [
-      {
-        id: 'q1',
-        text: 'What was the main focus of your recent study?',
-        type: 'opening',
-        revealsKeyFact: true,
-        keyFactText: 'Study focused on Arctic ice melt rates over 20 years',
-        opensFollowUp: ['q2', 'q3'],
-        impactsRapport: 5,
-      },
-      {
-        id: 'q2',
-        text: 'Can you explain the methodology you used?',
-        type: 'follow-up',
-        revealsKeyFact: true,
-        keyFactText: 'Used satellite data and ground measurements from 15 research stations',
-        impactsRapport: 3,
-      },
-      {
-        id: 'q3',
-        text: 'What were your most surprising findings?',
-        type: 'follow-up',
-        revealsKeyFact: true,
-        keyFactText: 'Ice melt rate accelerated 40% faster than previous decade',
-        opensFollowUp: ['q4'],
-        impactsRapport: 5,
-      },
-      {
-        id: 'q4',
-        text: 'What does this mean for coastal cities?',
-        type: 'deep-dive',
-        revealsKeyFact: true,
-        keyFactText: 'Predicts 2-foot sea level rise by 2050 affecting 100M people',
-        impactsRapport: 4,
-      },
-      {
-        id: 'q5',
-        text: 'What solutions do you recommend?',
-        type: 'deep-dive',
-        revealsKeyFact: true,
-        keyFactText: 'Immediate 50% carbon emission reduction needed to slow progression',
-        impactsRapport: 5,
-      },
-      {
-        id: 'q6',
-        text: 'Why should we trust your research?',
-        type: 'opening',
-        revealsKeyFact: false,
-        impactsRapport: -8,
-      },
-      {
-        id: 'q7',
-        text: 'What about other scientists who disagree?',
-        type: 'opening',
-        revealsKeyFact: false,
-        impactsRapport: -5,
-      },
-    ],
-  },
-  {
-    name: 'Marcus Johnson',
-    role: 'Tech CEO',
-    topic: 'New AI Product Launch',
-    emoji: '👨‍💼',
-    keyFactsNeeded: 5,
-    questions: [
-      {
-        id: 'q8',
-        text: 'Tell us about your new AI product.',
-        type: 'opening',
-        revealsKeyFact: true,
-        keyFactText: 'AI assistant that helps students with homework and learning',
-        opensFollowUp: ['q9', 'q10'],
-        impactsRapport: 5,
-      },
-      {
-        id: 'q9',
-        text: 'What makes it different from competitors?',
-        type: 'follow-up',
-        revealsKeyFact: true,
-        keyFactText: 'Uses personalized learning algorithms adapting to each student',
-        impactsRapport: 4,
-      },
-      {
-        id: 'q10',
-        text: 'When will it be available and at what cost?',
-        type: 'follow-up',
-        revealsKeyFact: true,
-        keyFactText: 'Launches next month, free for students, $10/month for premium',
-        opensFollowUp: ['q11'],
-        impactsRapport: 5,
-      },
-      {
-        id: 'q11',
-        text: 'How do you address concerns about academic integrity?',
-        type: 'deep-dive',
-        revealsKeyFact: true,
-        keyFactText: 'Built-in safeguards prevent cheating, focuses on understanding not answers',
-        impactsRapport: 6,
-      },
-      {
-        id: 'q12',
-        text: 'What are your revenue projections?',
-        type: 'deep-dive',
-        revealsKeyFact: true,
-        keyFactText: 'Expecting 1 million users and $50M revenue in first year',
-        impactsRapport: 3,
-      },
-      {
-        id: 'q13',
-        text: 'Aren\'t you just trying to make money off students?',
-        type: 'opening',
-        revealsKeyFact: false,
-        impactsRapport: -10,
-      },
-    ],
-  },
+const QUESTIONS: Question[] = [
+  { id: 'q1', text: "What inspired this bill?", type: 'soft', impact: 10 },
+  { id: 'q2', text: "Critics say it costs too much. Response?", type: 'hard', impact: 25 },
+  { id: 'q3', text: "What's your favorite color?", type: 'fun', impact: -15 }, // Boring question
+  { id: 'q4', text: "How will this affect teachers?", type: 'soft', impact: 15 },
+  { id: 'q5', text: "Is it true you haven't read it?", type: 'hard', impact: 40 },
 ];
 
 interface InterviewMasterChallengeProps {
@@ -151,241 +30,138 @@ interface InterviewMasterChallengeProps {
 }
 
 export function InterviewMasterChallenge({ onComplete }: InterviewMasterChallengeProps) {
-  const [currentIntervieweeIndex, setCurrentIntervieweeIndex] = useState(0);
-  const [collectedFacts, setCollectedFacts] = useState<string[]>([]);
-  const [askedQuestions, setAskedQuestions] = useState<string[]>([]);
-  const [availableFollowUps, setAvailableFollowUps] = useState<string[]>([]);
-  const [rapportMeter, setRapportMeter] = useState(70);
-  const [lastAnswer, setLastAnswer] = useState<string>('');
-  const [interviewScores, setInterviewScores] = useState<number[]>([]);
+  const [audienceInterest, setInterest] = useState(50);
+  const [questionCount, setQuestionCount] = useState(0);
+  const [isLive, setIsLive] = useState(true);
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+  const [interestHistory, setInterestHistory] = useState<number[]>([50]);
+  const { playSfx } = useAudio();
 
-  const currentInterviewee = INTERVIEWEES[currentIntervieweeIndex];
-  const availableQuestions = currentInterviewee.questions.filter(
-    q => !askedQuestions.includes(q.id) && 
-    (q.type === 'opening' || availableFollowUps.includes(q.id))
-  );
+  // Simulate natural interest decay
+  useEffect(() => {
+    if (!isLive) return;
+    const timer = setInterval(() => {
+      setInterest(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isLive]);
 
-  const handleQuestionClick = (question: Question) => {
-    setAskedQuestions([...askedQuestions, question.id]);
-    
-    // Update rapport
-    const newRapport = Math.max(0, Math.min(100, rapportMeter + question.impactsRapport));
-    setRapportMeter(newRapport);
+  // Update history for graph
+  useEffect(() => {
+    setInterestHistory(prev => [...prev.slice(-20), audienceInterest]);
+  }, [audienceInterest]);
 
-    // Show answer
-    if (question.revealsKeyFact && question.keyFactText) {
-      setLastAnswer(`"${question.keyFactText}"`);
-      setCollectedFacts([...collectedFacts, question.keyFactText]);
+  const handleAsk = (question: Question) => {
+    playSfx('click');
+    setCurrentQuestion(question);
+
+    // Immediate impact
+    setInterest(prev => Math.min(100, Math.max(0, prev + question.impact)));
+
+    setQuestionCount(prev => prev + 1);
+
+    if (questionCount >= 4) {
+      setIsLive(false);
+      setTimeout(() => onComplete(audienceInterest), 2000);
     } else {
-      setLastAnswer(`"I'd rather not answer that..." (Rapport decreased)`);
-    }
-
-    // Unlock follow-up questions
-    if (question.opensFollowUp) {
-      setAvailableFollowUps([...availableFollowUps, ...question.opensFollowUp]);
-    }
-  };
-
-  const handleCompleteInterview = () => {
-    // Calculate score
-    const factsScore = Math.round((collectedFacts.length / currentInterviewee.keyFactsNeeded) * 20) * 5;
-    
-    const followUpQuestions = askedQuestions.filter(
-      id => currentInterviewee.questions.find(q => q.id === id)?.type === 'follow-up'
-    ).length;
-    const followUpScore = Math.min(10, followUpQuestions * 5);
-
-    const rapportScore = Math.round((rapportMeter / 100) * 10);
-
-    const interviewScore = factsScore + followUpScore + rapportScore;
-    setInterviewScores([...interviewScores, interviewScore]);
-
-    if (currentIntervieweeIndex < INTERVIEWEES.length - 1) {
-      // Next interview
-      setCurrentIntervieweeIndex(prev => prev + 1);
-      setCollectedFacts([]);
-      setAskedQuestions([]);
-      setAvailableFollowUps([]);
-      setRapportMeter(70);
-      setLastAnswer('');
-    } else {
-      // Complete challenge
-      const avgScore = Math.round(
-        [...interviewScores, interviewScore].reduce((a, b) => a + b, 0) / INTERVIEWEES.length
-      );
-      onComplete(avgScore);
+      setTimeout(() => setCurrentQuestion(null), 2000);
     }
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="bg-white rounded-2xl shadow-lg p-8">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <MessageSquare className="w-8 h-8 text-purple-600" />
-            <h3 className="text-2xl font-bold text-gray-900">
-              Interview Master
-            </h3>
-          </div>
-          <div className="flex gap-2">
-            {INTERVIEWEES.map((_, idx) => (
-              <div
-                key={idx}
-                className={`w-3 h-3 rounded-full ${
-                  idx < currentIntervieweeIndex
-                    ? 'bg-purple-500'
-                    : idx === currentIntervieweeIndex
-                    ? 'bg-pink-500'
-                    : 'bg-gray-300'
-                }`}
-              />
-            ))}
-          </div>
-        </div>
+    <div className="max-w-7xl mx-auto p-6">
+      <div className="grid grid-cols-12 gap-8">
 
-        {/* Interviewee Info */}
-        <div className="bg-purple-50 rounded-xl p-6 mb-6">
-          <div className="flex items-center gap-4 mb-4">
-            <span className="text-6xl">{currentInterviewee.emoji}</span>
-            <div className="flex-1">
-              <h4 className="text-2xl font-bold text-gray-900">{currentInterviewee.name}</h4>
-              <p className="text-purple-700 font-medium">{currentInterviewee.role}</p>
-              <p className="text-sm text-gray-600 mt-1">Topic: {currentInterviewee.topic}</p>
+        {/* TV Monitor / Live Feed */}
+        <div className="col-span-8">
+          <div className="bg-black rounded-3xl overflow-hidden shadow-2xl relative aspect-video border-8 border-gray-800">
+            {/* Studio Background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-900 to-black">
+              {/* Studio Lights */}
+              <div className="absolute top-0 left-1/4 w-32 h-32 bg-blue-500 opacity-20 blur-3xl rounded-full"></div>
+              <div className="absolute top-0 right-1/4 w-32 h-32 bg-purple-500 opacity-20 blur-3xl rounded-full"></div>
             </div>
-          </div>
 
-          {/* Rapport Meter */}
-          <div className="mb-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-gray-700">Openness Meter</span>
-                {rapportMeter > 60 ? (
-                  <TrendingUp className="w-4 h-4 text-green-600" />
-                ) : (
-                  <TrendingDown className="w-4 h-4 text-red-600" />
-                )}
-              </div>
-              <span className="text-sm font-bold text-purple-600">{rapportMeter}%</span>
+            {/* Characters */}
+            <div className="absolute bottom-0 left-20 w-48 h-64 flex flex-col items-center justify-end">
+              <div className="text-9xl">🎤</div>
+              <div className="bg-blue-600 text-white px-4 py-1 rounded-full text-sm font-bold mb-4">YOU</div>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-3">
-              <div
-                className={`h-3 rounded-full transition-all duration-500 ${
-                  rapportMeter > 60 ? 'bg-green-500' :
-                  rapportMeter > 30 ? 'bg-yellow-500' :
-                  'bg-red-500'
-                }`}
-                style={{ width: `${rapportMeter}%` }}
-              />
+
+            <div className="absolute bottom-0 right-20 w-48 h-64 flex flex-col items-center justify-end">
+              <div className="text-9xl">{GUEST.avatar}</div>
+              <div className="bg-gray-600 text-white px-4 py-1 rounded-full text-sm font-bold mb-4">{GUEST.name}</div>
             </div>
-          </div>
 
-          {/* Key Facts Progress */}
-          <div className="flex items-center gap-2 text-sm">
-            <span className="font-semibold text-gray-700">Key Facts Collected:</span>
-            <span className="font-bold text-purple-600">
-              {collectedFacts.length} / {currentInterviewee.keyFactsNeeded}
-            </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-6 mb-6">
-          {/* Question Wheel */}
-          <div className="col-span-2">
-            <h4 className="font-bold text-gray-900 mb-4">Available Questions:</h4>
-            
-            {availableQuestions.length === 0 ? (
-              <div className="bg-gray-50 rounded-xl p-8 text-center text-gray-500">
-                No more questions available. Complete the interview or ask follow-ups.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {availableQuestions.map(question => (
-                  <button
-                    key={question.id}
-                    onClick={() => handleQuestionClick(question)}
-                    className={`w-full p-4 rounded-xl border-2 text-left transition-all hover:scale-102 ${
-                      question.type === 'opening'
-                        ? 'border-blue-200 bg-blue-50 hover:border-blue-500'
-                        : question.type === 'follow-up'
-                        ? 'border-purple-200 bg-purple-50 hover:border-purple-500'
-                        : 'border-pink-200 bg-pink-50 hover:border-pink-500'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="text-2xl">
-                        {question.type === 'opening' ? '💭' : 
-                         question.type === 'follow-up' ? '🔄' : '🔍'}
-                      </span>
-                      <div>
-                        <div className="text-sm font-medium text-gray-900 mb-1">
-                          {question.text}
-                        </div>
-                        <div className="text-xs text-gray-600">
-                          {question.type === 'opening' && 'Opening Question'}
-                          {question.type === 'follow-up' && 'Follow-Up Question'}
-                          {question.type === 'deep-dive' && 'Deep-Dive Question'}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Collected Facts */}
-          <div className="col-span-1">
-            <h4 className="font-bold text-gray-900 mb-4">Note Cards:</h4>
-            <div className="bg-yellow-50 rounded-xl p-4 border-2 border-yellow-200 min-h-[300px]">
-              {collectedFacts.length === 0 ? (
-                <div className="text-center text-gray-500 text-sm py-8">
-                  Ask questions to collect key facts
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {collectedFacts.map((fact, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-white p-3 rounded-lg shadow-sm border border-yellow-300"
-                    >
-                      <div className="text-xs font-bold text-purple-600 mb-1">
-                        FACT #{idx + 1}
-                      </div>
-                      <div className="text-sm text-gray-900">{fact}</div>
-                    </div>
-                  ))}
-                </div>
+            {/* Dialogue Overlay */}
+            <AnimatePresence>
+              {currentQuestion && (
+                <motion.div
+                  initial={{ y: 50, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: 50, opacity: 0 }}
+                  className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-sm px-8 py-4 rounded-2xl shadow-lg max-w-2xl text-center"
+                >
+                  <p className="text-xl font-bold text-gray-900">"{currentQuestion.text}"</p>
+                </motion.div>
               )}
+            </AnimatePresence>
+
+            {/* Live Overlay */}
+            <div className="absolute top-8 left-8 flex items-center gap-4">
+              <div className="bg-red-600 text-white px-3 py-1 rounded font-bold text-xs animate-pulse flex items-center gap-2">
+                <div className="w-2 h-2 bg-white rounded-full"></div> LIVE
+              </div>
+              <div className="text-white/80 font-mono text-sm">CAM 1</div>
             </div>
           </div>
         </div>
 
-        {/* Last Answer */}
-        {lastAnswer && (
-          <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-xl p-4 mb-6 border-l-4 border-purple-500">
-            <div className="flex items-start gap-3">
-              <span className="text-3xl">{currentInterviewee.emoji}</span>
-              <div>
-                <div className="text-sm font-semibold text-purple-900 mb-1">
-                  {currentInterviewee.name} responds:
-                </div>
-                <div className="text-gray-900 italic">{lastAnswer}</div>
-              </div>
+        {/* Control Room */}
+        <div className="col-span-4 space-y-6">
+          {/* Audience Graph */}
+          <div className="bg-gray-900 rounded-2xl p-6 shadow-lg border border-gray-800">
+            <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+              <Users className="w-5 h-5 text-green-500" /> Audience Interest
+            </h3>
+            <div className="h-32 flex items-end gap-1">
+              {interestHistory.map((val, i) => (
+                <div
+                  key={i}
+                  className="flex-1 bg-green-500 rounded-t-sm transition-all duration-300"
+                  style={{ height: `${val}%`, opacity: (i + 1) / interestHistory.length }}
+                ></div>
+              ))}
+            </div>
+            <div className="mt-2 text-right text-2xl font-bold text-green-500">{audienceInterest}%</div>
+          </div>
+
+          {/* Question Bank */}
+          <div className="bg-white rounded-2xl p-6 shadow-lg h-[300px] overflow-y-auto">
+            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <MessageSquare className="w-5 h-5" /> Questions
+            </h3>
+            <div className="space-y-3">
+              {QUESTIONS.map(q => (
+                <button
+                  key={q.id}
+                  onClick={() => handleAsk(q)}
+                  disabled={!!currentQuestion || !isLive}
+                  className="w-full text-left p-3 rounded-lg border hover:bg-gray-50 hover:border-blue-400 transition-colors text-sm group"
+                >
+                  <div className="font-bold text-gray-700 mb-1 group-hover:text-blue-600">{q.text}</div>
+                  <div className={`text-xs px-2 py-0.5 rounded-full inline-block ${q.type === 'hard' ? 'bg-red-100 text-red-700' :
+                    q.type === 'soft' ? 'bg-green-100 text-green-700' :
+                      'bg-yellow-100 text-yellow-700'
+                    }`}>
+                    {q.type.toUpperCase()}
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
-        )}
+        </div>
 
-        <button
-          onClick={handleCompleteInterview}
-          disabled={collectedFacts.length < currentInterviewee.keyFactsNeeded}
-          className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {collectedFacts.length < currentInterviewee.keyFactsNeeded
-            ? `Collect ${currentInterviewee.keyFactsNeeded - collectedFacts.length} more key facts`
-            : currentIntervieweeIndex < INTERVIEWEES.length - 1
-            ? 'Next Interview'
-            : 'Complete Interviews'}
-        </button>
       </div>
     </div>
   );

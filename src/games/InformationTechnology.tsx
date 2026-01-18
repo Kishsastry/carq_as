@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Clock, Star, Trophy } from 'lucide-react';
+import { useAudio } from '../contexts/AudioContext';
 import type { Challenge } from '../lib/database.types';
 import { BugHuntChallenge } from './it/BugHuntChallenge';
 import { AlgorithmBuilderChallenge } from './it/AlgorithmBuilderChallenge';
@@ -26,11 +27,14 @@ export function InformationTechnologyGame({ challenge, onComplete, onExit }: Inf
     }
   }, [gameState, timeLeft]);
 
+  const { playSfx } = useAudio();
+
   const handleGameComplete = (earnedScore: number) => {
     setScore(earnedScore);
     const earnedStars = earnedScore >= 90 ? 3 : earnedScore >= 70 ? 2 : earnedScore >= 50 ? 1 : 0;
     setStars(earnedStars);
     setGameState('complete');
+    playSfx('complete');
   };
 
   const handleFinish = () => {
@@ -40,9 +44,12 @@ export function InformationTechnologyGame({ challenge, onComplete, onExit }: Inf
   if (gameState === 'intro') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 flex items-center justify-center p-4">
-        <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl p-8">
+        <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
           <button
-            onClick={onExit}
+            onClick={() => {
+              playSfx('click');
+              onExit();
+            }}
             className="mb-4 p-2 hover:bg-gray-100 rounded-full transition-colors"
           >
             <X className="w-6 h-6" />
@@ -92,7 +99,10 @@ export function InformationTechnologyGame({ challenge, onComplete, onExit }: Inf
           </div>
 
           <button
-            onClick={() => setGameState('playing')}
+            onClick={() => {
+              playSfx('click');
+              setGameState('playing');
+            }}
             className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold rounded-xl text-lg transition-all transform hover:scale-105"
           >
             Start Challenge
@@ -133,13 +143,13 @@ export function InformationTechnologyGame({ challenge, onComplete, onExit }: Inf
           </div>
         </div>
 
-        {challengeType === 'bug-hunt' && (
+        {(challengeType === 'bug-hunt' || challengeType === 'bug-hunt-challenge') && (
           <BugHuntChallenge onComplete={handleGameComplete} />
         )}
-        {challengeType === 'algorithm-builder' && (
+        {(challengeType === 'algorithm-builder' || challengeType === 'algorithm-builder-challenge') && (
           <AlgorithmBuilderChallenge onComplete={handleGameComplete} />
         )}
-        {challengeType === 'system-design' && (
+        {(challengeType === 'system-design' || challengeType === 'system-design-challenge') && (
           <SystemDesignChallenge onComplete={handleGameComplete} />
         )}
       </div>
@@ -154,9 +164,8 @@ export function InformationTechnologyGame({ challenge, onComplete, onExit }: Inf
             {[1, 2, 3].map((i) => (
               <Star
                 key={i}
-                className={`w-16 h-16 ${
-                  i <= stars ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'
-                }`}
+                className={`w-16 h-16 ${i <= stars ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'
+                  }`}
               />
             ))}
           </div>
@@ -176,16 +185,17 @@ export function InformationTechnologyGame({ challenge, onComplete, onExit }: Inf
             {score >= 90
               ? "Outstanding! You're a coding wizard!"
               : score >= 70
-              ? 'Great job! Keep coding to master your skills!'
-              : score >= 50
-              ? 'Good effort! Practice more to level up!'
-              : 'Keep trying! Every bug fixed makes you better!'}
+                ? 'Great job! Keep coding to master your skills!'
+                : score >= 50
+                  ? 'Good effort! Practice more to level up!'
+                  : 'Keep trying! Every bug fixed makes you better!'}
           </p>
         </div>
 
         <div className="flex gap-4">
           <button
             onClick={() => {
+              playSfx('click');
               setGameState('intro');
               setScore(0);
               setTimeLeft(180);
@@ -195,7 +205,10 @@ export function InformationTechnologyGame({ challenge, onComplete, onExit }: Inf
             Try Again
           </button>
           <button
-            onClick={handleFinish}
+            onClick={() => {
+              playSfx('click');
+              handleFinish();
+            }}
             className="flex-1 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:from-green-600 hover:to-emerald-600 transition-colors"
           >
             Continue

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Clock, Star, Trophy } from 'lucide-react';
+import { useAudio } from '../contexts/AudioContext';
 import type { Challenge } from '../lib/database.types';
 import { OrderTakingChallenge } from './culinary/OrderTakingChallenge';
 import { CookingChallenge } from './culinary/CookingChallenge';
@@ -26,11 +27,14 @@ export function CulinaryArtsGame({ challenge, onComplete, onExit }: CulinaryArts
     }
   }, [gameState, timeLeft]);
 
+  const { playSfx } = useAudio();
+
   const handleGameComplete = (earnedScore: number) => {
     setScore(earnedScore);
     const earnedStars = earnedScore >= 90 ? 3 : earnedScore >= 70 ? 2 : earnedScore >= 50 ? 1 : 0;
     setStars(earnedStars);
     setGameState('complete');
+    playSfx('complete');
   };
 
   const handleFinish = () => {
@@ -40,9 +44,12 @@ export function CulinaryArtsGame({ challenge, onComplete, onExit }: CulinaryArts
   if (gameState === 'intro') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 flex items-center justify-center p-4">
-        <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl p-8">
+        <div className="max-w-2xl w-full bg-white rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
           <button
-            onClick={onExit}
+            onClick={() => {
+              playSfx('click');
+              onExit();
+            }}
             className="mb-4 p-2 hover:bg-gray-100 rounded-full transition-colors"
           >
             <X className="w-6 h-6" />
@@ -92,7 +99,10 @@ export function CulinaryArtsGame({ challenge, onComplete, onExit }: CulinaryArts
           </div>
 
           <button
-            onClick={() => setGameState('playing')}
+            onClick={() => {
+              playSfx('click');
+              setGameState('playing');
+            }}
             className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-bold rounded-xl text-lg transition-all transform hover:scale-105"
           >
             Start Challenge
@@ -133,13 +143,13 @@ export function CulinaryArtsGame({ challenge, onComplete, onExit }: CulinaryArts
           </div>
         </div>
 
-        {challengeType === 'order-taking' && (
+        {(challengeType === 'order-taking' || challengeType === 'order-taking-challenge') && (
           <OrderTakingChallenge onComplete={handleGameComplete} />
         )}
-        {challengeType === 'cooking' && (
+        {(challengeType === 'cooking' || challengeType === 'cooking-challenge') && (
           <CookingChallenge onComplete={handleGameComplete} />
         )}
-        {challengeType === 'plate-presentation' && (
+        {(challengeType === 'plate-presentation' || challengeType === 'plate-presentation-challenge') && (
           <PlatePresentationChallenge onComplete={handleGameComplete} />
         )}
       </div>
@@ -154,9 +164,8 @@ export function CulinaryArtsGame({ challenge, onComplete, onExit }: CulinaryArts
             {[1, 2, 3].map((i) => (
               <Star
                 key={i}
-                className={`w-16 h-16 ${
-                  i <= stars ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'
-                }`}
+                className={`w-16 h-16 ${i <= stars ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'
+                  }`}
               />
             ))}
           </div>
@@ -176,16 +185,17 @@ export function CulinaryArtsGame({ challenge, onComplete, onExit }: CulinaryArts
             {score >= 90
               ? "Outstanding! You're a natural chef!"
               : score >= 70
-              ? 'Great job! Keep practicing to perfect your skills!'
-              : score >= 50
-              ? 'Good effort! Try again to improve your score!'
-              : 'Keep trying! Practice makes perfect!'}
+                ? 'Great job! Keep practicing to perfect your skills!'
+                : score >= 50
+                  ? 'Good effort! Try again to improve your score!'
+                  : 'Keep trying! Practice makes perfect!'}
           </p>
         </div>
 
         <div className="flex gap-4">
           <button
             onClick={() => {
+              playSfx('click');
               setGameState('intro');
               setScore(0);
               setTimeLeft(180);
@@ -195,7 +205,10 @@ export function CulinaryArtsGame({ challenge, onComplete, onExit }: CulinaryArts
             Try Again
           </button>
           <button
-            onClick={handleFinish}
+            onClick={() => {
+              playSfx('click');
+              handleFinish();
+            }}
             className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold rounded-xl hover:from-orange-600 hover:to-red-600 transition-colors"
           >
             Continue
